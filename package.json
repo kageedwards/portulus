@@ -1,0 +1,18 @@
+{
+  "name": "portulus",
+  "version": "0.1.0",
+  "description": "LXCF desktop client for Reticulum mesh networks",
+  "type": "module",
+  "main": "./src/main.js",
+  "scripts": {
+    "start": "electron ./src/main.js"
+  },
+  "dependencies": {
+    "@liamcottle/rns.js": "github:kageedwards/rns.js#feature/group-destination-support",
+    "ini": "^6.0.0",
+    "lxcf": "github:kageedwards/lxcf-js"
+  },
+  "devDependencies": {
+    "electron": "^41.0.2"
+  }
+}

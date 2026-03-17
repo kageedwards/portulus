@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <mask id="m">
+      <rect width="100" height="100" fill="white"/>
+      <circle cx="62" cy="38" r="24" fill="black"/>
+    </mask>
+  </defs>
+  <text x="10" y="72" font-family="monospace" font-size="52" font-weight="bold" fill="#8892a4" mask="url(#m)">ff</text>
+  <circle cx="62" cy="38" r="22" fill="none" stroke="#8892a4" stroke-width="6"/>
+  <line x1="78" y1="54" x2="94" y2="70" stroke="#8892a4" stroke-width="6" stroke-linecap="round"/>
+</svg>

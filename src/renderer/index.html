@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+    <title>Portulus</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Titlebar drag region -->
+    <div id="titlebar">
+        <span id="titlebar-label">Portulus</span>
+    </div>
+
+    <!-- Tab bar -->
+    <div id="tab-bar">
+        <div id="tabs"></div>
+        <button id="btn-reveal" title="Show subnet names"><svg viewBox="0 0 100 100" width="16" height="16" aria-hidden="true"><defs><mask id="m"><rect width="100" height="100" fill="white"/><circle cx="62" cy="38" r="24" fill="black"/></mask></defs><text x="10" y="72" font-family="monospace" font-size="52" font-weight="bold" fill="currentColor" mask="url(#m)">ff</text><circle cx="62" cy="38" r="22" fill="none" stroke="currentColor" stroke-width="6"/><line x1="78" y1="54" x2="94" y2="70" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg></button>
+        <button id="btn-join" title="Join channel">+</button>
+    </div>
+
+    <!-- Splash screen (shown when no channels open) -->
+    <div id="splash">
+        <div id="splash-logo">PORTULUS</div>
+        <div id="splash-sub">lxcf chat on reticulum</div>
+        <div id="splash-bookmarks"></div>
+        <div id="splash-join">
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="splash-input" placeholder="/join #channel [subnet]" spellcheck="false">
+                <button id="splash-go" title="Join channel">→</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main chat area (hidden until a channel is joined) -->
+    <div id="main" class="hidden">
+        <div id="chat-area">
+            <div id="messages"></div>
+        </div>
+        <div id="sidebar">
+            <div id="self-nick"></div>
+            <div id="member-list"></div>
+        </div>
+    </div>
+
+    <!-- Input bar -->
+    <div id="input-bar" class="hidden">
+        <div id="cmd-menu" class="hidden"></div>
+        <input type="text" id="input" placeholder="Type a message..." spellcheck="false" autocomplete="off">
+    </div>
+
+    <!-- Status bar -->
+    <div id="status-bar">
+        <span id="status-identity"></span>
+        <span id="status-right">
+            <span id="status-flair"></span>
+            <div id="theme-menu-anchor">
+                <button id="btn-theme" class="status-btn">theme</button>
+                <div id="theme-menu" class="hidden">
+                    <div class="theme-option active" data-theme="midnight">midnight</div>
+                    <div class="theme-option" data-theme="cherry-blossom">cherry blossom</div>
+                    <div class="theme-option" data-theme="vintage-charm">vintage charm</div>
+                    <div class="theme-option" data-theme="mocha-latte">mocha latte</div>
+                    <div class="theme-option" data-theme="halcyon-skies">halcyon skies</div>
+                    <div class="theme-option" data-theme="legion">legion</div>
+                    <div class="theme-option" data-theme="millennium">millennium</div>
+                </div>
+            </div>
+            <button id="btn-quit" class="status-btn">quit</button>
+        </span>
+    </div>
+
+    <!-- Quit confirmation modal -->
+    <div id="quit-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-box">
+            <div class="modal-title">quit portulus?</div>
+            <div class="modal-actions">
+                <button id="quit-cancel" class="modal-btn">cancel</button>
+                <button id="quit-confirm" class="modal-btn modal-btn-danger">quit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
