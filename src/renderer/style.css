@@ -710,7 +710,7 @@ body {
     width: 16px;
     height: 16px;
     min-width: 16px;
-    background: url("legion.svg") center / contain no-repeat;
+    background: url("icons/legion.svg") center / contain no-repeat;
 }
 
 .status-btn {
