@@ -18,10 +18,10 @@ if(!api){
 const state = {
     nick: "anon",
     suffix: "",
-    channels: {},   // cid -> { name, subnet, cid, messages: [], members: [] }
+    channels: {},   // cid -> { name, hub, key, cid, messages: [], members: [] }
     activeCid: null,
-    bookmarks: [],
-    revealSubnets: false,
+    hubs: { hubs: {} },  // hub-centric bookmarks from bookmarks.json
+    revealHubs: false,
 };
 
 // ------------------------------------------------------------------
@@ -77,12 +77,10 @@ function renderTabs() {
         tab.className = "tab" + (cid === state.activeCid ? " active" : "");
         tab.dataset.cid = cid;
 
-        const isBookmarked = state.bookmarks.some(
-            b => b.name === ch.name && (b.subnet ?? null) === (ch.subnet ?? null)
-        );
+        const isBookmarked = isChannelBookmarked(ch.name, ch.hub, ch.key);
         const star = isBookmarked ? "★" : "☆";
-        const label = state.revealSubnets
-            ? (ch.subnet ? `${ch.name} · ${ch.subnet}` : ch.name)
+        const label = state.revealHubs
+            ? (ch.hub ? `${ch.hub}:${ch.name}` : ch.name)
             : cid;
         tab.innerHTML = `<span class="tab-star${isBookmarked ? " bookmarked" : ""}">${star}</span><span>${escapeHtml(label)}</span><span class="close-tab">×</span>`;
 
@@ -90,8 +88,8 @@ function renderTabs() {
             if(e.target.classList.contains("close-tab")){
                 leaveChannel(cid);
             } else if(e.target.classList.contains("tab-star")){
-                api.toggleBookmark(ch.name, ch.subnet).then(bm => {
-                    state.bookmarks = bm;
+                api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
+                    state.hubs = result.hubs || result;
                     renderTabs();
                 });
             } else {
@@ -101,6 +99,15 @@ function renderTabs() {
 
         $tabs.appendChild(tab);
     }
+}
+
+function isChannelBookmarked(name, hubTag, key) {
+    const tag = hubTag || "local";
+    const hub = (state.hubs.hubs || {})[tag];
+    if(!hub) return false;
+    return (hub.channels || []).some(
+        ch => ch.name === name && (ch.key ?? null) === (key ?? null)
+    );
 }
 
 function switchTab(cid) {
@@ -182,48 +189,125 @@ function renderMembers() {
 
 function renderBookmarks() {
     $splashBookmarks.innerHTML = "";
-    if(state.bookmarks.length === 0) return;
+    const hubs = state.hubs.hubs || {};
+    const tags = Object.keys(hubs).sort();
 
-    const open = state.bookmarks.filter(b => !b.subnet);
-    const keyed = {};
-    for(const b of state.bookmarks.filter(b => b.subnet)){
-        (keyed[b.subnet] = keyed[b.subnet] || []).push(b);
-    }
+    let hasAny = false;
+    for(const tag of tags){
+        const hub = hubs[tag];
+        const channels = hub.channels || [];
+        hasAny = true;
 
-    for(const b of open.sort((a, c) => a.name.localeCompare(c.name))){
-        const item = document.createElement("div");
-        item.className = "bookmark-item";
-        item.innerHTML = `<span class="bookmark-icon">⬡</span><span>${escapeHtml(b.name)}</span>`;
-        item.addEventListener("click", () => joinChannel(b.name));
-        $splashBookmarks.appendChild(item);
-    }
-
-    for(const [subnet, bms] of Object.entries(keyed).sort()){
+        // Hub header — clickable to edit
         const header = document.createElement("div");
         header.className = "bookmark-header";
-        header.textContent = subnet;
+        header.innerHTML = `${escapeHtml(tag === "local" ? "🌐 Local" : `⬡ ${tag}`)}`;
+        header.style.cursor = "pointer";
+        header.addEventListener("click", () => openHubModal(tag));
         $splashBookmarks.appendChild(header);
 
-        for(const b of bms.sort((a, c) => a.name.localeCompare(c.name))){
+        if(channels.length === 0){
+            const empty = document.createElement("div");
+            empty.className = "bookmark-item";
+            empty.style.color = "var(--text-dim)";
+            empty.style.fontSize = "12px";
+            empty.innerHTML = `<span class="bookmark-icon">·</span><span>No bookmarked channels</span>`;
+            $splashBookmarks.appendChild(empty);
+            continue;
+        }
+
+        for(const ch of [...channels].sort((a, b) => a.name.localeCompare(b.name))){
             const item = document.createElement("div");
             item.className = "bookmark-item";
-            item.innerHTML = `<span class="bookmark-icon">⬡</span><span>${escapeHtml(b.name)}</span>`;
-            item.addEventListener("click", () => joinChannel(b.name, b.subnet));
+            item.innerHTML = `<span class="bookmark-icon">⬡</span><span>${escapeHtml(ch.name)}</span>`;
+            item.addEventListener("click", () => {
+                // If the hub has a destination, use the tag even if it's "local"
+                const hubArg = (tag === "local" && !hub.destination) ? null : tag;
+                joinChannel(ch.name, hubArg, ch.key);
+            });
             $splashBookmarks.appendChild(item);
         }
     }
+
+    // Add hub button
+    if(hasAny || true){
+        const addBtn = document.createElement("div");
+        addBtn.className = "bookmark-item";
+        addBtn.style.color = "var(--text-dim)";
+        addBtn.style.marginTop = "8px";
+        addBtn.innerHTML = `<span class="bookmark-icon">+</span><span>Add hub</span>`;
+        addBtn.addEventListener("click", () => openHubModal(null));
+        $splashBookmarks.appendChild(addBtn);
+    }
 }
+
+// ------------------------------------------------------------------
+// Hub edit modal
+// ------------------------------------------------------------------
+
+function openHubModal(tag) {
+    const $modal = document.getElementById("hub-modal");
+    const $tag = document.getElementById("hub-modal-tag");
+    const $dest = document.getElementById("hub-modal-dest");
+    const $title = document.getElementById("hub-modal-title");
+    const $del = document.getElementById("hub-modal-delete");
+
+    if(tag){
+        const hub = (state.hubs.hubs || {})[tag] || {};
+        $title.textContent = "Edit Hub";
+        $tag.value = tag;
+        $dest.value = hub.destination || "";
+        $del.classList.remove("hidden");
+    } else {
+        $title.textContent = "Add Hub";
+        $tag.value = "";
+        $dest.value = "";
+        $del.classList.add("hidden");
+    }
+
+    $modal.classList.remove("hidden");
+    $tag.focus();
+}
+
+function closeHubModal() {
+    document.getElementById("hub-modal").classList.add("hidden");
+}
+
+document.getElementById("hub-modal-save").addEventListener("click", async () => {
+    const tag = document.getElementById("hub-modal-tag").value.trim();
+    const dest = document.getElementById("hub-modal-dest").value.trim() || null;
+    if(!tag) return;
+    const result = await api.saveHub(tag, dest);
+    state.hubs = result.hubs || result;
+    closeHubModal();
+    renderBookmarks();
+    renderTabs();
+});
+
+document.getElementById("hub-modal-delete").addEventListener("click", async () => {
+    const tag = document.getElementById("hub-modal-tag").value.trim();
+    if(!tag) return;
+    const result = await api.deleteHub(tag);
+    state.hubs = result.hubs || result;
+    closeHubModal();
+    renderBookmarks();
+    renderTabs();
+});
+
+document.getElementById("hub-modal-cancel").addEventListener("click", closeHubModal);
+
+document.querySelector("#hub-modal .modal-backdrop").addEventListener("click", closeHubModal);
 
 // ------------------------------------------------------------------
 // Channel actions
 // ------------------------------------------------------------------
 
-async function joinChannel(name, subnet) {
+async function joinChannel(name, hub, key) {
     if(!name.startsWith("#")) name = "#" + name;
 
     // already joined — just switch to it
     for(const [cid, ch] of Object.entries(state.channels)){
-        if(ch.name === name && (ch.subnet ?? null) === (subnet ?? null)){
+        if(ch.name === name && (ch.hub ?? null) === (hub ?? null) && (ch.key ?? null) === (key ?? null)){
             state.activeCid = cid;
             renderTabs();
             showChat();
@@ -234,21 +318,31 @@ async function joinChannel(name, subnet) {
     }
 
     try {
-        const result = await api.join(name, subnet || null);
+        const result = await api.join(name, hub || null, key || null);
+        if(!result.ok){
+            throw new Error(result.error || "Join failed");
+        }
         const cid = result.cid;
+
+        if(!cid){
+            throw new Error("Bridge returned no channel ID");
+        }
 
         if(!state.channels[cid]){
             state.channels[cid] = {
                 name: result.name,
-                subnet: result.subnet,
+                hub: result.hub,
+                key: result.key,
                 messages: [],
                 members: [],
             };
         }
 
-        addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(result.name)}</span>`);
+        const displayName = result.name || name;
         if(result.destHash){
-            addMessage(cid, `<span class="msg-system">Group: ${result.destHash}</span>`);
+            addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(displayName)}. Hub destination: ${result.destHash}</span>`);
+        } else {
+            addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(displayName)}</span>`);
         }
 
         state.activeCid = cid;
@@ -299,10 +393,15 @@ function handleInput(line) {
     const cid = state.activeCid;
 
     if(line.startsWith("/join ")){
-        const parts = line.slice(6).trim().split(/\s+/, 2);
+        const parts = line.slice(6).trim().split(/\s+/, 3);
         const name = parts[0] || "";
-        const subnet = parts[1] || null;
-        if(name) joinChannel(name, subnet).catch(console.error);
+        const hub = parts[1] || null;
+        const key = parts[2] || null;
+
+        // Inherit hub from active tab when not specified
+        const effectiveHub = hub || (state.activeCid ? (state.channels[state.activeCid]?.hub || null) : null);
+
+        if(name) joinChannel(name, effectiveHub, key).catch(console.error);
 
     } else if(line.startsWith("/leave")){
         if(cid) leaveChannel(cid);
@@ -345,7 +444,7 @@ function handleInput(line) {
 // ------------------------------------------------------------------
 
 const COMMANDS = [
-    { name: "/join",  hint: "#channel [subnet]", args: true },
+    { name: "/join",  hint: "#channel [hub] [key]", args: true },
     { name: "/leave", hint: "leave current channel", args: false },
     { name: "/quit",  hint: "exit portulus", args: false },
     { name: "/nick",  hint: "new_name", args: true },
@@ -474,8 +573,8 @@ $btnJoin.addEventListener("click", () => {
 
 const $btnReveal = document.getElementById("btn-reveal");
 $btnReveal.addEventListener("click", () => {
-    state.revealSubnets = !state.revealSubnets;
-    $btnReveal.classList.toggle("active", state.revealSubnets);
+    state.revealHubs = !state.revealHubs;
+    $btnReveal.classList.toggle("active", state.revealHubs);
     renderTabs();
 });
 
@@ -505,6 +604,9 @@ document.querySelector("#quit-modal .modal-backdrop").addEventListener("click", 
 document.addEventListener("keydown", (e) => {
     if(e.key === "Escape" && !document.getElementById("quit-modal").classList.contains("hidden")){
         document.getElementById("quit-modal").classList.add("hidden");
+    }
+    if(e.key === "Escape" && !document.getElementById("hub-modal").classList.contains("hidden")){
+        closeHubModal();
     }
 });
 
@@ -538,8 +640,8 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         const ch = state.channels[state.activeCid];
         if(!ch) return;
-        api.toggleBookmark(ch.name, ch.subnet).then(bm => {
-            state.bookmarks = bm;
+        api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
+            state.hubs = result.hubs || result;
             renderTabs();
         });
     }
@@ -552,7 +654,7 @@ document.addEventListener("keydown", (e) => {
 api.on("lxcf:init", (data) => {
     state.nick = data.nick;
     state.suffix = data.suffix;
-    state.bookmarks = data.bookmarks || [];
+    state.hubs = data.hubs || { hubs: {} };
     $statusIdentity.textContent = `${data.nick}~${data.suffix}`;
     $titleLabel.textContent = `Portulus — ${data.nick}~${data.suffix}`;
     renderBookmarks();

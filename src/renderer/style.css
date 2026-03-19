@@ -841,3 +841,44 @@ body {
     background: var(--danger);
     color: var(--text-bright);
 }
+
+.modal-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    margin-top: 12px;
+}
+
+.modal-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+
+.modal-input:focus {
+    border-color: var(--accent);
+}
+
+.modal-input::placeholder {
+    color: var(--text-dim);
+}
+
+.modal-btn-accent {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.modal-btn-accent:hover {
+    background: var(--accent);
+    color: var(--bg-deep);
+}

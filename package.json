@@ -5,14 +5,14 @@
   "type": "module",
   "main": "./src/main.js",
   "scripts": {
-    "start": "electron ./src/main.js"
+    "start": "electron ./src/main.js",
+    "test": "node --test tests/test_bridge_manager.js"
   },
   "dependencies": {
-    "@liamcottle/rns.js": "github:kageedwards/rns.js#feature/group-destination-support",
-    "ini": "^6.0.0",
-    "lxcf": "github:kageedwards/lxcf-js"
+    "ini": "^6.0.0"
   },
   "devDependencies": {
-    "electron": "^41.0.2"
+    "electron": "^41.0.2",
+    "fast-check": "^4.6.0"
   }
 }

@@ -17,7 +17,7 @@
     <!-- Tab bar -->
     <div id="tab-bar">
         <div id="tabs"></div>
-        <button id="btn-reveal" title="Show subnet names"><svg viewBox="0 0 100 100" width="16" height="16" aria-hidden="true"><defs><mask id="m"><rect width="100" height="100" fill="white"/><circle cx="62" cy="38" r="24" fill="black"/></mask></defs><text x="10" y="72" font-family="monospace" font-size="52" font-weight="bold" fill="currentColor" mask="url(#m)">ff</text><circle cx="62" cy="38" r="22" fill="none" stroke="currentColor" stroke-width="6"/><line x1="78" y1="54" x2="94" y2="70" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg></button>
+        <button id="btn-reveal" title="Show hub names"><svg viewBox="0 0 100 100" width="16" height="16" aria-hidden="true"><defs><mask id="m"><rect width="100" height="100" fill="white"/><circle cx="62" cy="38" r="24" fill="black"/></mask></defs><text x="10" y="72" font-family="monospace" font-size="52" font-weight="bold" fill="currentColor" mask="url(#m)">ff</text><circle cx="62" cy="38" r="22" fill="none" stroke="currentColor" stroke-width="6"/><line x1="78" y1="54" x2="94" y2="70" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg></button>
         <button id="btn-join" title="Join channel">+</button>
     </div>
 
@@ -28,7 +28,7 @@
         <div id="splash-bookmarks"></div>
         <div id="splash-join">
             <div style="display:flex;gap:8px;">
-                <input type="text" id="splash-input" placeholder="/join #channel [subnet]" spellcheck="false">
+                <input type="text" id="splash-input" placeholder="/join #channel [hub] [key]" spellcheck="false">
                 <button id="splash-go" title="Join channel">→</button>
             </div>
         </div>
@@ -70,6 +70,24 @@
             </div>
             <button id="btn-quit" class="status-btn">quit</button>
         </span>
+    </div>
+
+    <!-- Hub edit modal -->
+    <div id="hub-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-box" style="min-width:320px;text-align:left;">
+            <div class="modal-title" id="hub-modal-title">Edit Hub</div>
+            <label class="modal-label" for="hub-modal-tag">Tag</label>
+            <input type="text" id="hub-modal-tag" class="modal-input" placeholder="e.g. rmap" spellcheck="false">
+            <label class="modal-label" for="hub-modal-dest">Destination Hash</label>
+            <input type="text" id="hub-modal-dest" class="modal-input" placeholder="32-byte hex" spellcheck="false">
+            <div class="modal-actions" style="margin-top:16px;">
+                <button id="hub-modal-delete" class="modal-btn modal-btn-danger">delete</button>
+                <span style="flex:1"></span>
+                <button id="hub-modal-cancel" class="modal-btn">cancel</button>
+                <button id="hub-modal-save" class="modal-btn modal-btn-accent">save</button>
+            </div>
+        </div>
     </div>
 
     <!-- Quit confirmation modal -->
