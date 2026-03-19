@@ -15,10 +15,16 @@ import { spawn } from "child_process";
 import { createInterface } from "readline";
 
 import ini from "ini";
+import { createRequire } from "module";
 import { createBridgeManager } from "./bridge.js";
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Resolve lxcf_bridge.py from the installed npm package
+const LXCF_PKG_DIR = path.dirname(require.resolve("lxcf/package.json"));
+const BRIDGE_SCRIPT = path.join(LXCF_PKG_DIR, "lxcf_bridge.py");
 
 const STORE_PATH = path.join(os.homedir(), ".lxcf");
 const SETTINGS_PATH = path.join(STORE_PATH, "portulus.json");
@@ -131,9 +137,7 @@ const mgr = createBridgeManager({
 const { bridgeRequest, bridgeSend } = mgr;
 
 function spawnBridge() {
-    const bridgePath = path.resolve(__dirname, "../../lxcf/lxcf_bridge.py");
-
-    bridge = spawn("python3", [bridgePath], {
+    bridge = spawn("python3", [BRIDGE_SCRIPT], {
         stdio: ["pipe", "pipe", "pipe"],
     });
 
