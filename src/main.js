@@ -11,7 +11,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import os from "os";
-import { spawn } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import { createInterface } from "readline";
 
 import ini from "ini";
@@ -25,6 +25,11 @@ const __dirname = path.dirname(__filename);
 // Resolve lxcf_bridge.py from the installed npm package
 const LXCF_PKG_DIR = path.dirname(require.resolve("lxcf/package.json"));
 const BRIDGE_SCRIPT = path.join(LXCF_PKG_DIR, "lxcf_bridge.py");
+const VENV_DIR = path.join(LXCF_PKG_DIR, ".venv");
+const VENV_PYTHON = process.platform === "win32"
+    ? path.join(VENV_DIR, "Scripts", "python.exe")
+    : path.join(VENV_DIR, "bin", "python3");
+const SETUP_VENV = path.join(LXCF_PKG_DIR, "setup_venv.py");
 
 const STORE_PATH = path.join(os.homedir(), ".lxcf");
 const SETTINGS_PATH = path.join(STORE_PATH, "portulus.json");
@@ -136,8 +141,25 @@ const mgr = createBridgeManager({
 });
 const { bridgeRequest, bridgeSend } = mgr;
 
+function ensureVenv() {
+    if(fs.existsSync(VENV_PYTHON)) return;
+    console.log("[bridge] venv missing — bootstrapping…");
+    if(fs.existsSync(SETUP_VENV)){
+        execFileSync("python3", [SETUP_VENV], { stdio: "inherit" });
+    } else {
+        // setup_venv.py not shipped yet — inline bootstrap
+        execFileSync("python3", ["-m", "venv", VENV_DIR], { stdio: "inherit" });
+        const pip = process.platform === "win32"
+            ? path.join(VENV_DIR, "Scripts", "pip")
+            : path.join(VENV_DIR, "bin", "pip");
+        execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+    }
+}
+
 function spawnBridge() {
-    bridge = spawn("python3", [BRIDGE_SCRIPT], {
+    ensureVenv();
+
+    bridge = spawn(VENV_PYTHON, [BRIDGE_SCRIPT], {
         stdio: ["pipe", "pipe", "pipe"],
     });
 
