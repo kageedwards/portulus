@@ -27,7 +27,10 @@ const LXCF_PKG_DIR = app.isPackaged
     ? path.join(process.resourcesPath, "lxcf")
     : path.dirname(require.resolve("lxcf/package.json"));
 const BRIDGE_SCRIPT = path.join(LXCF_PKG_DIR, "lxcf_bridge.py");
-const VENV_DIR = path.join(LXCF_PKG_DIR, ".venv");
+// Packaged app bundle is read-only on macOS — put venv in user data dir
+const VENV_DIR = app.isPackaged
+    ? path.join(os.homedir(), ".lxcf", "venv")
+    : path.join(LXCF_PKG_DIR, ".venv");
 const VENV_PYTHON = process.platform === "win32"
     ? path.join(VENV_DIR, "Scripts", "python.exe")
     : path.join(VENV_DIR, "bin", "python3");
@@ -146,15 +149,18 @@ const { bridgeRequest, bridgeSend } = mgr;
 function ensureVenv() {
     if(fs.existsSync(VENV_PYTHON)) return;
     console.log("[bridge] venv missing — bootstrapping…");
-    if(fs.existsSync(SETUP_VENV)){
-        execFileSync("python3", [SETUP_VENV], { stdio: "inherit" });
-    } else {
-        // setup_venv.py not shipped yet — inline bootstrap
-        execFileSync("python3", ["-m", "venv", VENV_DIR], { stdio: "inherit" });
-        const pip = process.platform === "win32"
-            ? path.join(VENV_DIR, "Scripts", "pip")
-            : path.join(VENV_DIR, "bin", "pip");
-        execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+    try {
+        if(fs.existsSync(SETUP_VENV) && !app.isPackaged){
+            execFileSync("python3", [SETUP_VENV], { stdio: "inherit" });
+        } else {
+            execFileSync("python3", ["-m", "venv", VENV_DIR], { stdio: "inherit" });
+            const pip = process.platform === "win32"
+                ? path.join(VENV_DIR, "Scripts", "pip")
+                : path.join(VENV_DIR, "bin", "pip");
+            execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+        }
+    } catch(err) {
+        console.error("[bridge] failed to bootstrap venv:", err.message);
     }
 }
 
