@@ -340,7 +340,7 @@ async function joinChannel(name, hub, key) {
 
         const displayName = result.name || name;
         if(result.destHash){
-            addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(displayName)}. Hub destination: ${result.destHash}</span>`);
+            addMessage(cid, `<span class="msg-system"><span class="msg-join">Joined ${escapeHtml(displayName)}.</span><br>Destination: ${result.destHash}</span>`);
         } else {
             addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(displayName)}</span>`);
         }
@@ -416,7 +416,12 @@ function handleInput(line) {
         if(newNick) api.changeNick(newNick);
 
     } else if(line.startsWith("/me ")){
-        if(cid) api.emote(cid, line.slice(4));
+        if(cid){
+            api.emote(cid, line.slice(4));
+            const ts = formatTime(Date.now() / 1000);
+            const dn = displayNick(state.nick, state.suffix);
+            addMessage(cid, `<span class="msg-time">${ts}</span><span class="msg-emote">* ${escapeHtml(dn)} ${escapeHtml(line.slice(4))}</span>`);
+        }
 
     // } else if(line.startsWith("/topic ")){
     //     if(cid) api.setTopic(cid, line.slice(7));
@@ -672,7 +677,8 @@ api.on("lxcf:join", (data) => {
 });
 
 api.on("lxcf:leave", (data) => {
-    addMessage(data.cid, `<span class="msg-system msg-leave">← ${escapeHtml(data.nick)} left</span>`);
+    const dn = displayNick(data.nick, data.suffix);
+    addMessage(data.cid, `<span class="msg-system msg-leave">← ${escapeHtml(dn)} left</span>`);
 });
 
 api.on("lxcf:nick", (data) => {
