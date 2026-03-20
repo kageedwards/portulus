@@ -15,7 +15,7 @@ npm install
 npm start
 ```
 
-Requires Node.js ≥ 18.
+Requires Node.js ≥ 18 and Python ≥ 3.10
 
 ## Features
 
