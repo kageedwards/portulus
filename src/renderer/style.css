@@ -157,6 +157,173 @@
     --font-mono:  "Lucida Console", "Consolas", "DejaVu Sans Mono", monospace;
 }
 
+/* ============================================================
+   Serenity Theme (Light)
+   Palette: #2274A5, #E7DFC6, #E9F1F7, #131B23, #816C61
+   ============================================================ */
+
+[data-theme="serenity"] {
+    --bg-deep:    #E9F1F7;
+    --bg-panel:   #FFFFFF;
+    --bg-surface: #F4F1EB;
+    --accent:     #2274A5;
+    --accent-alt: #74A522;
+    --text:       #131B23;
+    --text-bright:#000000;
+    --text-dim:   #6B7280;
+    --border:     #D1D5DB;
+    --hover:      rgba(34, 116, 165, 0.08);
+    --danger:     #B91C1C;
+    --success:    #74A522;
+}
+
+[data-theme="serenity"] #sidebar {
+    background: var(--bg-panel);
+    border-color: var(--border);
+}
+
+/* ============================================================
+   Prism Theme
+   Rainbow: #FC648F #FFA159 #FFEB67 #70FF8F #48FFF0 #5B97FF #D87CFF #FB82FF
+   ============================================================ */
+
+[data-theme="prism"] {
+    --bg-deep:    #0C0C14;
+    --bg-panel:   #16162A;
+    --bg-surface: #111122;
+    --accent:     #48FFF0;
+    --accent-alt: #FC648F;
+    --text:       #E0E0F0;
+    --text-bright:#FFFFFF;
+    --text-dim:   #7878A0;
+    --border:     #2A2A4A;
+    --hover:      rgba(72, 255, 240, 0.08);
+    --danger:     #FC648F;
+    --success:    #70FF8F;
+    --rainbow:    linear-gradient(90deg, #FC648F, #FFA159, #FFEB67, #70FF8F, #48FFF0, #5B97FF, #D87CFF, #FB82FF);
+}
+
+[data-theme="prism"] #tab-bar {
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, #FC648F, #FFA159, #FFEB67, #70FF8F, #48FFF0, #5B97FF, #D87CFF, #FB82FF) 1;
+}
+
+[data-theme="prism"] .tab.active {
+    border-image: linear-gradient(90deg, #FC648F, #FFA159, #FFEB67, #70FF8F, #48FFF0, #5B97FF, #D87CFF, #FB82FF) 1;
+}
+
+/* [data-theme="prism"] #input-bar {
+    border-top: 2px solid transparent;
+    border-image: linear-gradient(90deg, #FB82FF, #D87CFF, #5B97FF, #48FFF0, #70FF8F, #FFEB67, #FFA159, #FC648F) 1;
+} */
+
+[data-theme="prism"] #sidebar {
+    background: var(--bg-surface);
+    /* border-image: linear-gradient(180deg, #FC648F, #FFA159, #FFEB67, #70FF8F, #48FFF0, #5B97FF, #D87CFF, #FB82FF) 1;
+    border-left-width: 2px;
+    border-left-style: solid; */
+}
+
+[data-theme="prism"] .msg-nick {
+    -webkit-text-fill-color: currentColor;
+}
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+1) .msg-nick { color: #FC648F; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+2) .msg-nick { color: #48FFF0; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+3) .msg-nick { color: #FFA159; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+4) .msg-nick { color: #5B97FF; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+5) .msg-nick { color: #FFEB67; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+6) .msg-nick { color: #D87CFF; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+7) .msg-nick { color: #70FF8F; }
+[data-theme="prism"] #messages > .msg-line:nth-child(8n+8) .msg-nick { color: #FB82FF; }
+
+[data-theme="prism"] #status-bar {
+    border-top: 1px solid transparent;
+    border-image: linear-gradient(90deg, #FC648F, #FFA159, #FFEB67, #70FF8F, #48FFF0, #5B97FF, #D87CFF, #FB82FF) 1;
+}
+
+/* ============================================================
+   Altitude Theme
+   Deep mountain blues, Madeline's hair pink, warm berry accents
+   ============================================================ */
+
+[data-theme="altitude"] {
+    --bg-deep:    #1B0A2E;
+    --bg-panel:   #241545;
+    --bg-surface: #1E1038;
+    --accent:     #E0457B;
+    --accent-alt: #5BCEFA;
+    --text:       #D4D0E8;
+    --text-bright:#F0ECF8;
+    --text-dim:   #7B6FA0;
+    --border:     #3A2660;
+    --hover:      rgba(224, 69, 123, 0.1);
+    --danger:     #E0457B;
+    --success:    #5BCEFA;
+}
+
+[data-theme="altitude"] #sidebar {
+    background: var(--bg-surface);
+    border-color: var(--border);
+}
+
+/* ============================================================
+   Sonic Bliss Theme
+   Palette: #FF5500, #F2F2F2, #FFFFFF, #333333, #999999
+   ============================================================ */
+
+[data-theme="sonic-bliss"] {
+    --bg-deep:    #F2F2F2;
+    --bg-panel:   #FFFFFF;
+    --bg-surface: #FAFAFA;
+    --accent:     #FF5500;
+    --accent-alt: #FF8800;
+    --text:       #333333;
+    --text-bright:#111111;
+    --text-dim:   #999999;
+    --border:     #E0E0E0;
+    --hover:      rgba(255, 85, 0, 0.06);
+    --danger:     #CC2200;
+    --success:    #2ECC71;
+}
+
+[data-theme="sonic-bliss"] #sidebar {
+    background: var(--bg-panel);
+    border-color: var(--border);
+}
+
+[data-theme="sonic-bliss"] #tab-bar {
+    background: var(--bg-panel);
+}
+
+[data-theme="sonic-bliss"] .tab.active {
+    border-bottom: 2px solid #FF5500;
+}
+
+/* ============================================================
+   Nighttime Theme
+   Palette: #000000, #1B1B1B, #F9A825, #FFFFFF, #272727
+   ============================================================ */
+
+[data-theme="nighttime"] {
+    --bg-deep:    #000000;
+    --bg-panel:   #1B1B1B;
+    --bg-surface: #121212;
+    --accent:     #F9A825;
+    --accent-alt: #F9A825;
+    --text:       #D4D4D4;
+    --text-bright:#FFFFFF;
+    --text-dim:   #6E6E6E;
+    --border:     #272727;
+    --hover:      rgba(249, 168, 37, 0.08);
+    --danger:     #E53935;
+    --success:    #43A047;
+}
+
+[data-theme="nighttime"] #sidebar {
+    background: var(--bg-panel);
+    border-color: var(--border);
+}
+
 * {
     margin: 0;
     padding: 0;
