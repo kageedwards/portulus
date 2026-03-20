@@ -159,19 +159,36 @@ function findSystemPython() {
 }
 
 function ensureVenv() {
-    if(fs.existsSync(VENV_PYTHON)) return;
-    console.log("[bridge] venv missing — bootstrapping…");
+    // Check if venv needs (re)building by comparing bundled lxcf version
+    const venvVersionFile = path.join(VENV_DIR, ".lxcf-version");
+    let bundledVersion = "unknown";
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(LXCF_PKG_DIR, "package.json"), "utf-8"));
+        bundledVersion = pkg.version || "unknown";
+    } catch(e) { /* use unknown */ }
+
+    if(fs.existsSync(VENV_PYTHON)){
+        try {
+            const installed = fs.readFileSync(venvVersionFile, "utf-8").trim();
+            if(installed === bundledVersion) return;
+            console.log(`[bridge] lxcf version changed (${installed} → ${bundledVersion}), rebuilding venv…`);
+        } catch(e) {
+            // No version file — rebuild to be safe
+            console.log("[bridge] venv version unknown, rebuilding…");
+        }
+        fs.rmSync(VENV_DIR, { recursive: true, force: true });
+    } else {
+        console.log("[bridge] venv missing — bootstrapping…");
+    }
+
     const sysPython = findSystemPython();
     try {
-        if(fs.existsSync(SETUP_VENV) && !app.isPackaged){
-            execFileSync(sysPython, [SETUP_VENV], { stdio: "inherit" });
-        } else {
-            execFileSync(sysPython, ["-m", "venv", VENV_DIR], { stdio: "inherit" });
-            const pip = process.platform === "win32"
-                ? path.join(VENV_DIR, "Scripts", "pip")
-                : path.join(VENV_DIR, "bin", "pip");
-            execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
-        }
+        execFileSync(sysPython, ["-m", "venv", VENV_DIR], { stdio: "inherit" });
+        const pip = process.platform === "win32"
+            ? path.join(VENV_DIR, "Scripts", "pip")
+            : path.join(VENV_DIR, "bin", "pip");
+        execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+        fs.writeFileSync(venvVersionFile, bundledVersion);
     } catch(err) {
         console.error("[bridge] failed to bootstrap venv:", err.message);
     }
