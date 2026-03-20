@@ -176,8 +176,9 @@ function renderMembers() {
     $memberList.innerHTML = "";
     const sorted = [...ch.members].sort((a, b) => a.nick.localeCompare(b.nick));
     for(const m of sorted){
+        if(m.isSelf) continue;
         const div = document.createElement("div");
-        div.className = "member" + (m.isSelf ? " self" : "");
+        div.className = "member";
         div.textContent = displayNick(m.nick, m.suffix);
         $memberList.appendChild(div);
     }
