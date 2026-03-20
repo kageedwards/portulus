@@ -4,6 +4,8 @@ A desktop chat client for [LXCF](https://github.com/kageedwards/lxcf) over [Reti
 
 ![portulus](https://img.shields.io/badge/version-0.1.0-blue)
 
+![Portulus screenshot](assets/screenshot.png)
+
 ## Install
 
 ```bash
