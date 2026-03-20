@@ -22,8 +22,10 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Resolve lxcf_bridge.py from the installed npm package
-const LXCF_PKG_DIR = path.dirname(require.resolve("lxcf/package.json"));
+// Resolve lxcf package — from extraResources when packaged, node_modules in dev
+const LXCF_PKG_DIR = app.isPackaged
+    ? path.join(process.resourcesPath, "lxcf")
+    : path.dirname(require.resolve("lxcf/package.json"));
 const BRIDGE_SCRIPT = path.join(LXCF_PKG_DIR, "lxcf_bridge.py");
 const VENV_DIR = path.join(LXCF_PKG_DIR, ".venv");
 const VENV_PYTHON = process.platform === "win32"
