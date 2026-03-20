@@ -688,7 +688,9 @@ api.on("lxcf:nick", (data) => {
         $titleLabel.textContent = `Portulus — ${state.nick}~${state.suffix}`;
     }
     for(const cid of Object.keys(state.channels)){
-        addMessage(cid, `<span class="msg-system">${escapeHtml(data.oldNick)} is now known as ${escapeHtml(data.newNick)}</span>`);
+        const oldDn = displayNick(data.oldNick, data.suffix);
+        const newDn = displayNick(data.newNick, data.suffix);
+        addMessage(cid, `<span class="msg-system">${escapeHtml(oldDn)} is now known as ${escapeHtml(newDn)}</span>`);
     }
     renderMembers();
 });
