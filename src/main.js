@@ -146,14 +146,27 @@ const mgr = createBridgeManager({
 });
 const { bridgeRequest, bridgeSend } = mgr;
 
+function findSystemPython() {
+    const candidates = [
+        "/opt/homebrew/bin/python3",
+        "/usr/local/bin/python3",
+        "/usr/bin/python3",
+    ];
+    for(const p of candidates){
+        if(fs.existsSync(p)) return p;
+    }
+    return "python3"; // fall back to PATH lookup
+}
+
 function ensureVenv() {
     if(fs.existsSync(VENV_PYTHON)) return;
     console.log("[bridge] venv missing — bootstrapping…");
+    const sysPython = findSystemPython();
     try {
         if(fs.existsSync(SETUP_VENV) && !app.isPackaged){
-            execFileSync("python3", [SETUP_VENV], { stdio: "inherit" });
+            execFileSync(sysPython, [SETUP_VENV], { stdio: "inherit" });
         } else {
-            execFileSync("python3", ["-m", "venv", VENV_DIR], { stdio: "inherit" });
+            execFileSync(sysPython, ["-m", "venv", VENV_DIR], { stdio: "inherit" });
             const pip = process.platform === "win32"
                 ? path.join(VENV_DIR, "Scripts", "pip")
                 : path.join(VENV_DIR, "bin", "pip");
