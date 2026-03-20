@@ -33,7 +33,9 @@
     },
     "files": [
       "src/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "!node_modules/lxcf/.venv/**",
+      "!node_modules/lxcf/__pycache__/**"
     ],
     "extraResources": [
       {
@@ -44,7 +46,10 @@
     ],
     "mac": {
       "icon": "assets/Portulus.icns",
-      "target": ["dmg", "pkg"],
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "pkg", "arch": ["x64", "arm64"] }
+      ],
       "category": "public.app-category.social-networking"
     },
     "win": {
@@ -53,8 +58,11 @@
     },
     "linux": {
       "icon": "assets/Portulus.png",
-      "target": ["AppImage", "deb", "pacman", "apk"],
+      "target": ["AppImage", "deb"],
       "category": "Network"
+    },
+    "deb": {
+      "depends": ["python3", "python3-venv", "python3-pip"]
     }
   }
 }
