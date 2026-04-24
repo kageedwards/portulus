@@ -25,6 +25,7 @@ const state = {
     rrcConnections: {},  // hubHash -> { hubName, limits, rooms: Set }
     discoveredHubs: [],  // [{ hash, name }] — from rrc:hub_discovered events
     rrcActiveHubTag: null,  // tag of the currently connected RRC hub
+    rrcActiveHubDest: null, // destination hash of the currently connected RRC hub
     rrcHubs: { hubs: {} },  // RRC bookmarks from ~/.portulus/bookmarks.json
 };
 
@@ -81,13 +82,17 @@ function renderTabs() {
         tab.className = "tab" + (cid === state.activeCid ? " active" : "");
         tab.dataset.cid = cid;
 
-        const isBookmarked = isChannelBookmarked(ch.name, ch.hub, ch.key);
+        const isBookmarked = isChannelBookmarked(ch.name, ch.hub, ch.key, ch.hubDest);
         const star = isBookmarked ? "★" : "☆";
         const protoIcon = ch.protocol === "rrc" ? "◈" : "⬡";
         let label;
         if(ch.protocol === "rrc"){
             // For RRC: always show hub context
             let hubLabel = ch.hub;
+            if(!hubLabel && ch.hubDest){
+                const found = findRrcHubByDest(ch.hubDest);
+                if(found) hubLabel = found.tag;
+            }
             if(!hubLabel){
                 // Try to find a name from active connections
                 for(const conn of Object.values(state.rrcConnections)){
@@ -107,7 +112,9 @@ function renderTabs() {
                 leaveChannel(cid);
             } else if(e.target.classList.contains("tab-star")){
                 if(ch.protocol === "rrc"){
-                    const rrcHubTag = ch.hub || findRrcHubTag();
+                    // Resolve hub tag from destination hash (source of truth)
+                    const found = ch.hubDest ? findRrcHubByDest(ch.hubDest) : null;
+                    const rrcHubTag = found ? found.tag : (ch.hub || findRrcHubTag());
                     api.rrcToggleBookmark(ch.name, rrcHubTag).then(result => {
                         state.rrcHubs = result.hubs || result;
                         renderTabs();
@@ -127,7 +134,7 @@ function renderTabs() {
     }
 }
 
-function isChannelBookmarked(name, hubTag, key) {
+function isChannelBookmarked(name, hubTag, key, hubDest) {
     const tag = hubTag || "local";
     // Check LXCF bookmarks
     const lxcfHub = (state.hubs.hubs || {})[tag];
@@ -136,7 +143,14 @@ function isChannelBookmarked(name, hubTag, key) {
             return true;
         }
     }
-    // Check RRC bookmarks — must match by hub tag
+    // Check RRC bookmarks — match by destination hash (source of truth)
+    if(hubDest){
+        const found = findRrcHubByDest(hubDest);
+        if(found && (found.hub.channels || []).some(ch => ch.name === name)){
+            return true;
+        }
+    }
+    // Fallback: match by tag name
     if(hubTag){
         const rrcHub = (state.rrcHubs.hubs || {})[hubTag];
         if(rrcHub && (rrcHub.channels || []).some(ch => ch.name === name)){
@@ -146,10 +160,20 @@ function isChannelBookmarked(name, hubTag, key) {
     return false;
 }
 
+// Helper: find RRC hub tag by destination hash
+function findRrcHubByDest(dest) {
+    if(!dest) return null;
+    const lc = dest.toLowerCase();
+    for(const [tag, hub] of Object.entries(state.rrcHubs.hubs || {})){
+        if((hub.destination || "").toLowerCase() === lc) return { tag, hub };
+    }
+    return null;
+}
+
 function findRrcHubTag() {
     const hubs = state.rrcHubs.hubs || {};
     for(const [tag, hub] of Object.entries(hubs)){
-        return tag;  // return first RRC hub
+        return tag;
     }
     return null;
 }
@@ -912,7 +936,8 @@ document.addEventListener("keydown", (e) => {
         const ch = state.channels[state.activeCid];
         if(!ch) return;
         if(ch.protocol === "rrc"){
-            const rrcHubTag = ch.hub || findRrcHubTag();
+            const found = ch.hubDest ? findRrcHubByDest(ch.hubDest) : null;
+            const rrcHubTag = found ? found.tag : (ch.hub || findRrcHubTag());
             api.rrcToggleBookmark(ch.name, rrcHubTag).then(result => {
                 state.rrcHubs = result.hubs || result;
                 renderTabs();
@@ -1020,6 +1045,7 @@ api.on("rrc:connected", (data) => {
         if(hub.destination === hubHash) { foundTag = tag; break; }
     }
     state.rrcActiveHubTag = foundTag;
+    state.rrcActiveHubDest = hubHash;
     state.rrcConnections[hubHash] = {
         hubName: hubName || hubHash,
         limits: data.limits || {},
@@ -1072,6 +1098,7 @@ api.on("rrc:joined", (data) => {
     state.channels[cid] = {
         name: data.room,
         hub: state.rrcActiveHubTag,
+        hubDest: state.rrcActiveHubDest,
         key: null,
         protocol: "rrc",
         messages: [],
