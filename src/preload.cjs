@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("portulus", {
     rrcDiscoverHubs: () => ipcRenderer.invoke("rrc-discover-hubs"),
     rrcSaveHub: (tag, dest, destName) => ipcRenderer.invoke("rrc-save-hub", tag, dest, destName),
     rrcDeleteHub: (tag) => ipcRenderer.invoke("rrc-delete-hub", tag),
+    rrcToggleBookmark: (name, hub) => ipcRenderer.invoke("rrc-toggle-bookmark", name, hub),
 
     // events from main
     on: (channel, callback) => {

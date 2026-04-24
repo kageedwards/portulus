@@ -24,6 +24,7 @@ const state = {
     revealHubs: false,
     rrcConnections: {},  // hubHash -> { hubName, limits, rooms: Set }
     discoveredHubs: [],  // [{ hash, name }] — from rrc:hub_discovered events
+    rrcActiveHubTag: null,  // tag of the currently connected RRC hub
 };
 
 // ------------------------------------------------------------------
@@ -91,10 +92,19 @@ function renderTabs() {
             if(e.target.classList.contains("close-tab")){
                 leaveChannel(cid);
             } else if(e.target.classList.contains("tab-star")){
-                api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
-                    state.hubs = result.hubs || result;
-                    renderTabs();
-                });
+                if(ch.protocol === "rrc"){
+                    // For RRC rooms, find the hub tag by checking hubs
+                    const rrcHubTag = findRrcHubTag();
+                    api.rrcToggleBookmark(ch.name, rrcHubTag).then(result => {
+                        state.hubs = result.hubs || result;
+                        renderTabs();
+                    });
+                } else {
+                    api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
+                        state.hubs = result.hubs || result;
+                        renderTabs();
+                    });
+                }
             } else {
                 switchTab(cid);
             }
@@ -111,6 +121,15 @@ function isChannelBookmarked(name, hubTag, key) {
     return (hub.channels || []).some(
         ch => ch.name === name && (ch.key ?? null) === (key ?? null)
     );
+}
+
+function findRrcHubTag() {
+    // Find the first RRC hub tag that has a connection
+    const hubs = state.hubs.hubs || {};
+    for(const [tag, hub] of Object.entries(hubs)){
+        if(hub.protocol === "rrc") return tag;
+    }
+    return null;
 }
 
 function switchTab(cid) {
@@ -259,10 +278,10 @@ function renderBookmarks() {
     // Discovered RRC hubs (appended below Add hub to avoid UI shifts)
     if(state.discoveredHubs.length > 0){
         const savedHashes = new Set(
-            Object.values(hubs).map(h => h.destination).filter(Boolean)
+            Object.values(hubs).map(h => (h.destination || "").toLowerCase()).filter(Boolean)
         );
 
-        const unsaved = state.discoveredHubs.filter(d => !savedHashes.has(d.hash));
+        const unsaved = state.discoveredHubs.filter(d => !savedHashes.has(d.hash.toLowerCase()));
         if(unsaved.length > 0){
             const header = document.createElement("div");
             header.className = "bookmark-header";
@@ -506,9 +525,21 @@ function handleInput(line) {
         const key = parts[2] || null;
 
         // Inherit hub from active tab when not specified
-        const effectiveHub = hub || (state.activeCid ? (state.channels[state.activeCid]?.hub || null) : null);
+        const activeCh = state.activeCid ? state.channels[state.activeCid] : null;
+        const effectiveHub = hub || (activeCh?.hub || null);
 
-        if(name) joinChannel(name, effectiveHub, key).catch(console.error);
+        // Check if this should route to RRC
+        const hubEntry = effectiveHub ? (state.hubs.hubs || {})[effectiveHub] : null;
+        const isRrc = (hubEntry && hubEntry.protocol === "rrc") || (activeCh && activeCh.protocol === "rrc" && !hub);
+
+        if(isRrc && hubEntry && hubEntry.destination){
+            // RRC join: connect to hub (if needed) then join room
+            api.rrcConnectHub(hubEntry.destination, hubEntry.dest_name || null).then(() => {
+                api.rrcJoin(name);
+            }).catch(console.error);
+        } else if(name){
+            joinChannel(name, effectiveHub, key).catch(console.error);
+        }
 
     } else if(line.startsWith("/leave")){
         if(cid){
@@ -867,6 +898,13 @@ api.on("rrc:init", (data) => {
 
 api.on("rrc:connected", (data) => {
     const hubHash = data.hub_hash || "";
+    // Find the tag for this hub
+    const hubs = state.hubs.hubs || {};
+    let foundTag = null;
+    for(const [tag, hub] of Object.entries(hubs)){
+        if(hub.destination === hubHash) { foundTag = tag; break; }
+    }
+    state.rrcActiveHubTag = foundTag;
     state.rrcConnections[hubHash] = {
         hubName: data.hub_name || hubHash,
         limits: data.limits || {},
@@ -901,7 +939,7 @@ api.on("rrc:joined", (data) => {
     const cid = `rrc:${data.room}`;
     state.channels[cid] = {
         name: data.room,
-        hub: null,
+        hub: state.rrcActiveHubTag,
         key: null,
         protocol: "rrc",
         messages: [],

@@ -368,6 +368,9 @@ function setupIPC() {
 
     ipcMain.handle("rrc-delete-hub", (_, tag) =>
         rrcBridgeRequest("delete_hub", { tag }));
+
+    ipcMain.handle("rrc-toggle-bookmark", (_, channelName, hubTag) =>
+        rrcBridgeRequest("toggle_bookmark", { channel: channelName, hub: hubTag || null }));
 }
 
 // ------------------------------------------------------------------
