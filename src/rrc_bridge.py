@@ -253,6 +253,18 @@ class RrcBridge:
         destination = msg.get("destination")
         dest_name = msg.get("dest_name") or None
         hubs = self._hubs_data.setdefault("hubs", {})
+
+        # Remove any existing entry with the same destination hash
+        # (handles renames — hash is the source of truth, not the tag)
+        if destination:
+            old_tags = [t for t, h in hubs.items() if h.get("destination") == destination and t != tag]
+            for old_tag in old_tags:
+                # Preserve channels from the old entry
+                old_channels = hubs[old_tag].get("channels", [])
+                hubs.pop(old_tag)
+                if tag not in hubs:
+                    hubs[tag] = {"destination": destination, "channels": old_channels}
+
         if tag in hubs:
             hubs[tag]["destination"] = destination
             if dest_name:
@@ -262,6 +274,7 @@ class RrcBridge:
             if dest_name:
                 entry["dest_name"] = dest_name
             hubs[tag] = entry
+
         _save_bookmarks(self._hubs_data)
         return {"ok": True, "hubs": self._hubs_data}
 
