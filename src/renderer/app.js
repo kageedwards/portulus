@@ -925,32 +925,40 @@ api.on("rrc:error", (data) => {
 
 api.on("rrc:hub_discovered", (data) => {
     const hash = data.hub_hash;
+    const name = data.name || null;
     const $results = document.getElementById("discover-results");
     if(!$results) return;
 
     // Skip if already shown
     if($results.querySelector(`[data-hash="${hash}"]`)) return;
 
+    const displayLabel = name
+        ? `${escapeHtml(name)} <span style="opacity:0.5">${escapeHtml(hash.slice(0, 16))}…</span>`
+        : escapeHtml(hash);
+
     const item = document.createElement("div");
     item.className = "discover-item";
     item.dataset.hash = hash;
-    item.innerHTML = `<span class="discover-icon">◈</span><span class="discover-hash">${escapeHtml(hash)}</span><button class="discover-add" title="Save as hub">+</button>`;
+    item.innerHTML = `<span class="discover-icon">◈</span><span class="discover-hash">${displayLabel}</span><button class="discover-add" title="Save as hub">+</button>`;
 
     item.querySelector(".discover-add").addEventListener("click", () => {
-        // Open hub modal pre-filled with this hash and RRC protocol
         const $modal = document.getElementById("hub-modal");
         const $tag = document.getElementById("hub-modal-tag");
         const $dest = document.getElementById("hub-modal-dest");
         const $title = document.getElementById("hub-modal-title");
         const $del = document.getElementById("hub-modal-delete");
+        const $destname = document.getElementById("hub-modal-destname");
+        const $destnameRow = document.getElementById("hub-modal-destname-row");
         const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
 
         $title.textContent = "Add RRC Hub";
-        $tag.value = "";
+        $tag.value = name || "";
         $dest.value = hash;
+        $destname.value = "";
         $del.classList.add("hidden");
         $modal.dataset.protocol = "rrc";
         protoBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.proto === "rrc"));
+        $destnameRow.classList.remove("hidden");
         $modal.classList.remove("hidden");
         $tag.focus();
     });

@@ -255,9 +255,19 @@ class RrcBridge:
                 hex_hash = destination_hash.hex()
                 if hex_hash not in self._bridge._discovered_hubs:
                     self._bridge._discovered_hubs.add(hex_hash)
+
+                    # app_data may contain a hub name or other info
+                    name = None
+                    if app_data:
+                        try:
+                            name = app_data.decode("utf-8")
+                        except Exception:
+                            name = None
+
                     self._bridge.write_event({
                         "event": "hub_discovered",
                         "hub_hash": hex_hash,
+                        "name": name,
                     })
 
         RNS.Transport.register_announce_handler(_RrcAnnounceHandler(self))
