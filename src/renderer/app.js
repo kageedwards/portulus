@@ -402,6 +402,7 @@ function openHubModal(tag) {
     const $modal = document.getElementById("hub-modal");
     const $tag = document.getElementById("hub-modal-tag");
     const $dest = document.getElementById("hub-modal-dest");
+    const $channel = document.getElementById("hub-modal-channel");
     const $title = document.getElementById("hub-modal-title");
     const $del = document.getElementById("hub-modal-delete");
     const $destname = document.getElementById("hub-modal-destname");
@@ -413,6 +414,7 @@ function openHubModal(tag) {
         $title.textContent = "Edit Hub";
         $tag.value = tag;
         $dest.value = hub.destination || "";
+        $channel.value = (hub.channels || [])[0]?.name || "";
         $destname.value = hub.dest_name || "";
         $del.classList.remove("hidden");
         $modal.dataset.protocol = hub.protocol || "lxcf";
@@ -420,6 +422,7 @@ function openHubModal(tag) {
         $title.textContent = "Add Hub";
         $tag.value = "";
         $dest.value = "";
+        $channel.value = "";
         $destname.value = "";
         $del.classList.add("hidden");
         $modal.dataset.protocol = "lxcf";
@@ -444,6 +447,7 @@ function openRrcHubModal(tag, prefillHash, prefillName) {
     const $modal = document.getElementById("hub-modal");
     const $tag = document.getElementById("hub-modal-tag");
     const $dest = document.getElementById("hub-modal-dest");
+    const $channel = document.getElementById("hub-modal-channel");
     const $title = document.getElementById("hub-modal-title");
     const $del = document.getElementById("hub-modal-delete");
     const $destname = document.getElementById("hub-modal-destname");
@@ -455,12 +459,14 @@ function openRrcHubModal(tag, prefillHash, prefillName) {
         $title.textContent = "Edit RRC Hub";
         $tag.value = tag;
         $dest.value = hub.destination || "";
+        $channel.value = (hub.channels || [])[0]?.name || "";
         $destname.value = hub.dest_name || "";
         $del.classList.remove("hidden");
     } else {
         $title.textContent = "Add RRC Hub";
         $tag.value = prefillName || (prefillHash ? prefillHash.slice(0, 12) : "");
         $dest.value = prefillHash || "";
+        $channel.value = "";
         $destname.value = "";
         $del.classList.add("hidden");
     }
@@ -487,6 +493,7 @@ document.getElementById("hub-modal-protocol").addEventListener("click", (e) => {
 document.getElementById("hub-modal-save").addEventListener("click", async () => {
     const tag = document.getElementById("hub-modal-tag").value.trim();
     const dest = document.getElementById("hub-modal-dest").value.trim() || null;
+    const channel = document.getElementById("hub-modal-channel").value.trim() || null;
     const protocol = document.getElementById("hub-modal").dataset.protocol || "lxcf";
     const destName = document.getElementById("hub-modal-destname").value.trim() || null;
     if(!tag) return;
@@ -494,9 +501,24 @@ document.getElementById("hub-modal-save").addEventListener("click", async () => 
     if(protocol === "rrc"){
         const result = await api.rrcSaveHub(tag, dest, destName);
         state.rrcHubs = result.hubs || result;
+        // Add home channel as a bookmark if provided
+        if(channel){
+            const chName = channel.startsWith("#") ? channel : `#${channel}`;
+            const result2 = await api.rrcToggleBookmark(chName, tag);
+            // Only update if it was added (not toggled off)
+            const hubEntry = (result2.hubs || result2).hubs?.[tag];
+            if(hubEntry && (hubEntry.channels || []).some(c => c.name === chName)){
+                state.rrcHubs = result2.hubs || result2;
+            }
+        }
     } else {
         const result = await api.saveHub(tag, dest);
         state.hubs = result.hubs || result;
+        if(channel){
+            const chName = channel.startsWith("#") ? channel : `#${channel}`;
+            const result2 = await api.toggleBookmark(chName, tag, null);
+            state.hubs = result2.hubs || result2;
+        }
     }
     closeHubModal();
     renderBookmarks();
