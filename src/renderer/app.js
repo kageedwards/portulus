@@ -605,12 +605,31 @@ function handleInput(line) {
         const effectiveHub = hub || (activeCh?.hub || null);
 
         // Check if this should route to RRC
-        const hubEntry = effectiveHub ? (state.rrcHubs.hubs || {})[effectiveHub] : null;
-        const isRrc = !!hubEntry || (activeCh && activeCh.protocol === "rrc" && !hub);
+        // First try tag lookup, then try matching by destination hash
+        let hubEntry = effectiveHub ? (state.rrcHubs.hubs || {})[effectiveHub] : null;
+        let rrcDest = hubEntry ? hubEntry.destination : null;
+        let rrcDestName = hubEntry ? (hubEntry.dest_name || null) : null;
 
-        if(isRrc && hubEntry && hubEntry.destination){
-            // RRC join: connect to hub (if needed) then join room
-            api.rrcConnectHub(hubEntry.destination, hubEntry.dest_name || null).then(() => {
+        if(!hubEntry && effectiveHub && /^[0-9a-f]{16,}$/i.test(effectiveHub)){
+            // Hub argument looks like a hex hash — find matching RRC hub by destination
+            for(const [t, h] of Object.entries(state.rrcHubs.hubs || {})){
+                if((h.destination || "").toLowerCase() === effectiveHub.toLowerCase()){
+                    hubEntry = h;
+                    rrcDest = h.destination;
+                    rrcDestName = h.dest_name || null;
+                    break;
+                }
+            }
+            // Even if not saved, treat a raw hex hash as an RRC direct connect
+            if(!hubEntry){
+                rrcDest = effectiveHub;
+            }
+        }
+
+        const isRrc = !!rrcDest || (activeCh && activeCh.protocol === "rrc" && !hub);
+
+        if(isRrc && rrcDest){
+            api.rrcConnectHub(rrcDest, rrcDestName).then(() => {
                 api.rrcJoin(name);
             }).catch(console.error);
         } else if(name){
