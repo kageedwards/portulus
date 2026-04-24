@@ -291,10 +291,11 @@ function renderBookmarks() {
             empty.style.cursor = "pointer";
             empty.innerHTML = `<span class="bookmark-icon">·</span><span>No bookmarked rooms — click to join</span>`;
             const hubTag = tag;
+            const hubDest = hub.destination || hubTag;
             empty.addEventListener("click", () => {
-                // Pre-fill: "/join #⌷ hubTag" with cursor at ⌷
+                // Use destination hash (no spaces) instead of display name
                 const prefix = "/join #";
-                const suffix = ` ${hubTag}`;
+                const suffix = ` ${hubDest}`;
                 $splashInput.value = prefix + suffix;
                 $splashInput.focus();
                 $splashInput.setSelectionRange(prefix.length, prefix.length);
