@@ -136,16 +136,10 @@ function isChannelBookmarked(name, hubTag, key) {
             return true;
         }
     }
-    // Check RRC bookmarks — by tag first, then scan all RRC hubs
-    const rrcHub = (state.rrcHubs.hubs || {})[tag];
-    if(rrcHub){
-        if((rrcHub.channels || []).some(ch => ch.name === name)){
-            return true;
-        }
-    }
-    // Fallback: scan all RRC hubs for this room name
-    for(const h of Object.values(state.rrcHubs.hubs || {})){
-        if((h.channels || []).some(ch => ch.name === name)){
+    // Check RRC bookmarks — must match by hub tag
+    if(hubTag){
+        const rrcHub = (state.rrcHubs.hubs || {})[hubTag];
+        if(rrcHub && (rrcHub.channels || []).some(ch => ch.name === name)){
             return true;
         }
     }
