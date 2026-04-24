@@ -25,6 +25,7 @@ const state = {
     rrcConnections: {},  // hubHash -> { hubName, limits, rooms: Set }
     discoveredHubs: [],  // [{ hash, name }] — from rrc:hub_discovered events
     rrcActiveHubTag: null,  // tag of the currently connected RRC hub
+    rrcHubs: { hubs: {} },  // RRC bookmarks from ~/.portulus/bookmarks.json
 };
 
 // ------------------------------------------------------------------
@@ -93,10 +94,9 @@ function renderTabs() {
                 leaveChannel(cid);
             } else if(e.target.classList.contains("tab-star")){
                 if(ch.protocol === "rrc"){
-                    // For RRC rooms, find the hub tag by checking hubs
-                    const rrcHubTag = findRrcHubTag();
+                    const rrcHubTag = ch.hub || findRrcHubTag();
                     api.rrcToggleBookmark(ch.name, rrcHubTag).then(result => {
-                        state.hubs = result.hubs || result;
+                        state.rrcHubs = result.hubs || result;
                         renderTabs();
                     });
                 } else {
@@ -116,18 +116,27 @@ function renderTabs() {
 
 function isChannelBookmarked(name, hubTag, key) {
     const tag = hubTag || "local";
-    const hub = (state.hubs.hubs || {})[tag];
-    if(!hub) return false;
-    return (hub.channels || []).some(
-        ch => ch.name === name && (ch.key ?? null) === (key ?? null)
-    );
+    // Check LXCF bookmarks
+    const lxcfHub = (state.hubs.hubs || {})[tag];
+    if(lxcfHub){
+        if((lxcfHub.channels || []).some(ch => ch.name === name && (ch.key ?? null) === (key ?? null))){
+            return true;
+        }
+    }
+    // Check RRC bookmarks
+    const rrcHub = (state.rrcHubs.hubs || {})[tag];
+    if(rrcHub){
+        if((rrcHub.channels || []).some(ch => ch.name === name)){
+            return true;
+        }
+    }
+    return false;
 }
 
 function findRrcHubTag() {
-    // Find the first RRC hub tag that has a connection
-    const hubs = state.hubs.hubs || {};
+    const hubs = state.rrcHubs.hubs || {};
     for(const [tag, hub] of Object.entries(hubs)){
-        if(hub.protocol === "rrc") return tag;
+        return tag;  // return first RRC hub
     }
     return null;
 }
@@ -212,21 +221,16 @@ function renderMembers() {
 
 function renderBookmarks() {
     $splashBookmarks.innerHTML = "";
-    const hubs = state.hubs.hubs || {};
-    const tags = Object.keys(hubs).sort();
 
-    let hasAny = false;
-    for(const tag of tags){
-        const hub = hubs[tag];
+    // --- LXCF hubs (from ~/.lxcf/bookmarks.json via LXCF bridge) ---
+    const lxcfHubs = state.hubs.hubs || {};
+    for(const tag of Object.keys(lxcfHubs).sort()){
+        const hub = lxcfHubs[tag];
         const channels = hub.channels || [];
-        const protocol = hub.protocol || "lxcf";
-        const protoIcon = protocol === "rrc" ? "◈" : "⬡";
-        hasAny = true;
 
-        // Hub header — clickable to edit
         const header = document.createElement("div");
         header.className = "bookmark-header";
-        header.innerHTML = `${escapeHtml(tag === "local" ? "🌐 Local" : `${protoIcon} ${tag}`)}`;
+        header.innerHTML = `${escapeHtml(tag === "local" ? "🌐 Local" : `⬡ ${tag}`)}`;
         header.style.cursor = "pointer";
         header.addEventListener("click", () => openHubModal(tag));
         $splashBookmarks.appendChild(header);
@@ -244,20 +248,49 @@ function renderBookmarks() {
         for(const ch of [...channels].sort((a, b) => a.name.localeCompare(b.name))){
             const item = document.createElement("div");
             item.className = "bookmark-item";
-            item.innerHTML = `<span class="bookmark-icon">${protoIcon}</span><span>${escapeHtml(ch.name)}</span>`;
+            item.innerHTML = `<span class="bookmark-icon">⬡</span><span>${escapeHtml(ch.name)}</span>`;
             item.addEventListener("click", () => {
-                if(protocol === "rrc"){
-                    const dest = hub.destination;
-                    const destName = hub.dest_name || null;
-                    if(dest){
-                        api.rrcConnectHub(dest, destName).then(() => {
-                            api.rrcJoin(ch.name);
-                        }).catch(console.error);
-                    }
-                } else {
-                    // LXCF bookmark
-                    const hubArg = (tag === "local" && !hub.destination) ? null : tag;
-                    joinChannel(ch.name, hubArg, ch.key);
+                const hubArg = (tag === "local" && !hub.destination) ? null : tag;
+                joinChannel(ch.name, hubArg, ch.key);
+            });
+            $splashBookmarks.appendChild(item);
+        }
+    }
+
+    // --- RRC hubs (from ~/.portulus/bookmarks.json via RRC bridge) ---
+    const rrcHubs = state.rrcHubs.hubs || {};
+    for(const tag of Object.keys(rrcHubs).sort()){
+        const hub = rrcHubs[tag];
+        const channels = hub.channels || [];
+
+        const header = document.createElement("div");
+        header.className = "bookmark-header";
+        header.innerHTML = `◈ ${escapeHtml(tag)}`;
+        header.style.cursor = "pointer";
+        header.addEventListener("click", () => openRrcHubModal(tag));
+        $splashBookmarks.appendChild(header);
+
+        if(channels.length === 0){
+            const empty = document.createElement("div");
+            empty.className = "bookmark-item";
+            empty.style.color = "var(--text-dim)";
+            empty.style.fontSize = "12px";
+            empty.innerHTML = `<span class="bookmark-icon">·</span><span>No bookmarked rooms</span>`;
+            $splashBookmarks.appendChild(empty);
+            continue;
+        }
+
+        for(const ch of [...channels].sort((a, b) => a.name.localeCompare(b.name))){
+            const item = document.createElement("div");
+            item.className = "bookmark-item";
+            item.innerHTML = `<span class="bookmark-icon">◈</span><span>${escapeHtml(ch.name)}</span>`;
+            item.addEventListener("click", () => {
+                const dest = hub.destination;
+                const destName = hub.dest_name || null;
+                if(dest){
+                    api.rrcConnectHub(dest, destName).then(() => {
+                        api.rrcJoin(ch.name);
+                    }).catch(console.error);
                 }
             });
             $splashBookmarks.appendChild(item);
@@ -265,20 +298,18 @@ function renderBookmarks() {
     }
 
     // Add hub button
-    if(hasAny || true){
-        const addBtn = document.createElement("div");
-        addBtn.className = "bookmark-item";
-        addBtn.style.color = "var(--text-dim)";
-        addBtn.style.marginTop = "8px";
-        addBtn.innerHTML = `<span class="bookmark-icon">+</span><span>Add hub</span>`;
-        addBtn.addEventListener("click", () => openHubModal(null));
-        $splashBookmarks.appendChild(addBtn);
-    }
+    const addBtn = document.createElement("div");
+    addBtn.className = "bookmark-item";
+    addBtn.style.color = "var(--text-dim)";
+    addBtn.style.marginTop = "8px";
+    addBtn.innerHTML = `<span class="bookmark-icon">+</span><span>Add hub</span>`;
+    addBtn.addEventListener("click", () => openHubModal(null));
+    $splashBookmarks.appendChild(addBtn);
 
-    // Discovered RRC hubs (appended below Add hub to avoid UI shifts)
+    // --- Discovered RRC hubs (below Add hub to avoid UI shifts) ---
     if(state.discoveredHubs.length > 0){
         const savedHashes = new Set(
-            Object.values(hubs).map(h => (h.destination || "").toLowerCase()).filter(Boolean)
+            Object.values(rrcHubs).map(h => (h.destination || "").toLowerCase()).filter(Boolean)
         );
 
         const unsaved = state.discoveredHubs.filter(d => !savedHashes.has(d.hash.toLowerCase()));
@@ -289,10 +320,10 @@ function renderBookmarks() {
             header.innerHTML = `◈ Discovered`;
             $splashBookmarks.appendChild(header);
 
-            for(const hub of unsaved){
-                const label = hub.name
-                    ? `${escapeHtml(hub.name)} <span style="opacity:0.5">${escapeHtml(hub.hash.slice(0, 12))}…</span>`
-                    : `<span style="font-family:monospace">${escapeHtml(hub.hash.slice(0, 24))}…</span>`;
+            for(const dHub of unsaved){
+                const label = dHub.name
+                    ? `${escapeHtml(dHub.name)} <span style="opacity:0.5">${escapeHtml(dHub.hash.slice(0, 12))}…</span>`
+                    : `<span style="font-family:monospace">${escapeHtml(dHub.hash.slice(0, 24))}…</span>`;
 
                 const item = document.createElement("div");
                 item.className = "bookmark-item";
@@ -300,31 +331,12 @@ function renderBookmarks() {
 
                 item.querySelector(".discover-add").addEventListener("click", (e) => {
                     e.stopPropagation();
-                    const $modal = document.getElementById("hub-modal");
-                    const $tag = document.getElementById("hub-modal-tag");
-                    const $dest = document.getElementById("hub-modal-dest");
-                    const $title = document.getElementById("hub-modal-title");
-                    const $del = document.getElementById("hub-modal-delete");
-                    const $destname = document.getElementById("hub-modal-destname");
-                    const $destnameRow = document.getElementById("hub-modal-destname-row");
-                    const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
-
-                    $title.textContent = "Add RRC Hub";
-                    $tag.value = hub.name || hub.hash.slice(0, 12);
-                    $dest.value = hub.hash;
-                    $destname.value = "";
-                    $del.classList.add("hidden");
-                    $modal.dataset.protocol = "rrc";
-                    protoBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.proto === "rrc"));
-                    $destnameRow.classList.remove("hidden");
-                    $modal.classList.remove("hidden");
-                    $tag.focus();
+                    openRrcHubModal(null, dHub.hash, dHub.name);
                 });
 
                 item.addEventListener("click", (e) => {
                     if(e.target.closest(".discover-add")) return;
-                    // Click the hub row to connect directly
-                    api.rrcConnectHub(hub.hash, null).catch(console.error);
+                    api.rrcConnectHub(dHub.hash, null).catch(console.error);
                 });
 
                 $splashBookmarks.appendChild(item);
@@ -379,6 +391,38 @@ function closeHubModal() {
     document.getElementById("hub-modal").classList.add("hidden");
 }
 
+function openRrcHubModal(tag, prefillHash, prefillName) {
+    const $modal = document.getElementById("hub-modal");
+    const $tag = document.getElementById("hub-modal-tag");
+    const $dest = document.getElementById("hub-modal-dest");
+    const $title = document.getElementById("hub-modal-title");
+    const $del = document.getElementById("hub-modal-delete");
+    const $destname = document.getElementById("hub-modal-destname");
+    const $destnameRow = document.getElementById("hub-modal-destname-row");
+    const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
+
+    if(tag){
+        const hub = (state.rrcHubs.hubs || {})[tag] || {};
+        $title.textContent = "Edit RRC Hub";
+        $tag.value = tag;
+        $dest.value = hub.destination || "";
+        $destname.value = hub.dest_name || "";
+        $del.classList.remove("hidden");
+    } else {
+        $title.textContent = "Add RRC Hub";
+        $tag.value = prefillName || (prefillHash ? prefillHash.slice(0, 12) : "");
+        $dest.value = prefillHash || "";
+        $destname.value = "";
+        $del.classList.add("hidden");
+    }
+
+    $modal.dataset.protocol = "rrc";
+    protoBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.proto === "rrc"));
+    $destnameRow.classList.remove("hidden");
+    $modal.classList.remove("hidden");
+    $tag.focus();
+}
+
 // Protocol toggle in hub modal
 document.getElementById("hub-modal-protocol").addEventListener("click", (e) => {
     const btn = e.target.closest(".proto-btn");
@@ -400,7 +444,7 @@ document.getElementById("hub-modal-save").addEventListener("click", async () => 
 
     if(protocol === "rrc"){
         const result = await api.rrcSaveHub(tag, dest, destName);
-        state.hubs = result.hubs || result;
+        state.rrcHubs = result.hubs || result;
     } else {
         const result = await api.saveHub(tag, dest);
         state.hubs = result.hubs || result;
@@ -412,9 +456,16 @@ document.getElementById("hub-modal-save").addEventListener("click", async () => 
 
 document.getElementById("hub-modal-delete").addEventListener("click", async () => {
     const tag = document.getElementById("hub-modal-tag").value.trim();
+    const protocol = document.getElementById("hub-modal").dataset.protocol || "lxcf";
     if(!tag) return;
-    const result = await api.deleteHub(tag);
-    state.hubs = result.hubs || result;
+
+    if(protocol === "rrc"){
+        const result = await api.rrcDeleteHub(tag);
+        state.rrcHubs = result.hubs || result;
+    } else {
+        const result = await api.deleteHub(tag);
+        state.hubs = result.hubs || result;
+    }
     closeHubModal();
     renderBookmarks();
     renderTabs();
@@ -529,8 +580,8 @@ function handleInput(line) {
         const effectiveHub = hub || (activeCh?.hub || null);
 
         // Check if this should route to RRC
-        const hubEntry = effectiveHub ? (state.hubs.hubs || {})[effectiveHub] : null;
-        const isRrc = (hubEntry && hubEntry.protocol === "rrc") || (activeCh && activeCh.protocol === "rrc" && !hub);
+        const hubEntry = effectiveHub ? (state.rrcHubs.hubs || {})[effectiveHub] : null;
+        const isRrc = !!hubEntry || (activeCh && activeCh.protocol === "rrc" && !hub);
 
         if(isRrc && hubEntry && hubEntry.destination){
             // RRC join: connect to hub (if needed) then join room
@@ -808,10 +859,18 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
         const ch = state.channels[state.activeCid];
         if(!ch) return;
-        api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
-            state.hubs = result.hubs || result;
-            renderTabs();
-        });
+        if(ch.protocol === "rrc"){
+            const rrcHubTag = ch.hub || findRrcHubTag();
+            api.rrcToggleBookmark(ch.name, rrcHubTag).then(result => {
+                state.rrcHubs = result.hubs || result;
+                renderTabs();
+            });
+        } else {
+            api.toggleBookmark(ch.name, ch.hub, ch.key).then(result => {
+                state.hubs = result.hubs || result;
+                renderTabs();
+            });
+        }
     }
 });
 
@@ -892,14 +951,16 @@ api.on("lxcf:members", (data) => {
 // ------------------------------------------------------------------
 
 api.on("rrc:init", (data) => {
-    // RRC bridge ready — start hub discovery automatically
+    // RRC bridge ready — load RRC bookmarks and start hub discovery
+    state.rrcHubs = data.hubs || { hubs: {} };
+    renderBookmarks();
     api.rrcDiscoverHubs().catch(() => {});
 });
 
 api.on("rrc:connected", (data) => {
     const hubHash = data.hub_hash || "";
-    // Find the tag for this hub
-    const hubs = state.hubs.hubs || {};
+    // Find the tag for this hub in RRC bookmarks
+    const hubs = state.rrcHubs.hubs || {};
     let foundTag = null;
     for(const [tag, hub] of Object.entries(hubs)){
         if(hub.destination === hubHash) { foundTag = tag; break; }

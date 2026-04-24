@@ -6,9 +6,8 @@ Reads commands from stdin, drives an rrc_tui.Client,
 writes events/responses to stdout.
 Stderr is reserved for logging.
 
-Usage (spawned by Electron main.js)::
-
-    python -m rrc_bridge
+RRC hub bookmarks are stored in ~/.portulus/bookmarks.json,
+separate from LXCF's bookmarks.
 
 Protocol:
     - Commands arrive on stdin as single-line JSON with an "action" field.
@@ -31,6 +30,33 @@ from rrc_tui.client import Client, ClientConfig, MessageTooLargeError
 
 log = logging.getLogger("rrc_bridge")
 
+PORTULUS_DIR = os.path.expanduser("~/.portulus")
+BOOKMARKS_PATH = os.path.join(PORTULUS_DIR, "bookmarks.json")
+
+
+# ------------------------------------------------------------------
+# Self-contained bookmark I/O (no lxcf.hub_config dependency)
+# ------------------------------------------------------------------
+
+def _load_bookmarks() -> dict:
+    """Load ~/.portulus/bookmarks.json. Returns {"hubs": {}} on missing/corrupt."""
+    try:
+        if os.path.isfile(BOOKMARKS_PATH):
+            with open(BOOKMARKS_PATH, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and "hubs" in data:
+                return data
+    except Exception:
+        pass
+    return {"hubs": {}}
+
+
+def _save_bookmarks(data: dict) -> None:
+    """Write ~/.portulus/bookmarks.json."""
+    os.makedirs(PORTULUS_DIR, exist_ok=True)
+    with open(BOOKMARKS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
 
 class RrcBridge:
     """
@@ -45,8 +71,7 @@ class RrcBridge:
         self.client: Client | None = None
         self._lock = threading.Lock()
         self._hubs_data: dict = {"hubs": {}}
-        self._store_path: str = os.path.expanduser("~/.lxcf")
-        self._session_state: str = "disconnected"  # disconnected | connecting | awaiting_welcome | active
+        self._session_state: str = "disconnected"
         self._hub_limits: dict = {}
         self._nickname: str | None = None
         self._discovered_hubs: set = set()
@@ -56,14 +81,12 @@ class RrcBridge:
     # ------------------------------------------------------------------
 
     def write_event(self, obj: dict) -> None:
-        """Write a JSON event to stdout (thread-safe)."""
         line = json.dumps(obj, separators=(",", ":"))
         with self._lock:
             sys.stdout.write(line + "\n")
             sys.stdout.flush()
 
     def write_response(self, req_id: str, data: dict) -> None:
-        """Write a response correlated to a request ID."""
         data["response"] = req_id
         line = json.dumps(data, separators=(",", ":"))
         with self._lock:
@@ -71,33 +94,27 @@ class RrcBridge:
             sys.stdout.flush()
 
     # ------------------------------------------------------------------
-    # Action handlers (stubs — implemented in tasks 1.2–1.8)
+    # Action handlers
     # ------------------------------------------------------------------
 
     def handle_init(self, msg: dict) -> None:
-        """Initialize RNS, rrc_tui.Client, wire events, emit 'ready'."""
         import RNS
-        from lxcf.hub_config import load_hubs
 
         nick = msg.get("nick", "anon")
         rns_config_dir = msg.get("rns_config_dir")
-
         if rns_config_dir:
             rns_config_dir = os.path.expanduser(rns_config_dir)
 
-        store_path = os.path.expanduser("~/.lxcf")
-        self._store_path = store_path
-        identity_path = os.path.join(store_path, "identity")
+        # Identity lives in ~/.lxcf/ (shared with LXCF bridge)
+        identity_dir = os.path.expanduser("~/.lxcf")
+        identity_path = os.path.join(identity_dir, "identity")
 
-        # Initialize Reticulum
         RNS.Reticulum(configdir=rns_config_dir)
 
-        # Load or create identity (same path as LXCF bridge)
-        os.makedirs(store_path, exist_ok=True)
+        os.makedirs(identity_dir, exist_ok=True)
         if os.path.exists(identity_path):
             identity = RNS.Identity.from_file(identity_path)
             if identity is None:
-                # File corrupt — create fresh
                 identity = RNS.Identity()
                 identity.to_file(identity_path)
         else:
@@ -105,11 +122,8 @@ class RrcBridge:
             identity.to_file(identity_path)
 
         self._nickname = nick
-
-        # Create RRC client
         self.client = Client(identity, config=None, nickname=nick)
 
-        # Wire RRC client callbacks
         self.client.on_welcome = self._on_welcome
         self.client.on_message = self._on_message
         self.client.on_notice = self._on_notice
@@ -119,22 +133,18 @@ class RrcBridge:
         self.client.on_close = self._on_close
         self.client.on_pong = self._on_pong
 
-        # Load hubs/bookmarks
-        self._hubs_data = load_hubs(store_path)
+        self._hubs_data = _load_bookmarks()
 
-        # Emit ready event
         address = identity.hash.hex()
-        suffix = address[:8]
         self.write_event({
             "event": "ready",
             "nick": nick,
             "address": address,
-            "suffix": suffix,
+            "suffix": address[:8],
             "hubs": self._hubs_data,
         })
 
     def handle_connect_hub(self, msg: dict) -> dict:
-        """Connect to an RRC hub by destination hash."""
         hub_hash_hex = msg.get("hub_hash", "")
         dest_name = msg.get("dest_name") or None
         try:
@@ -145,7 +155,6 @@ class RrcBridge:
         if self.client is None:
             return {"ok": False, "error": "Bridge not initialized"}
 
-        # If a custom dest_name is provided, reconfigure the client
         if dest_name:
             self.client.config = ClientConfig(dest_name=dest_name)
 
@@ -157,15 +166,10 @@ class RrcBridge:
             self._session_state = "disconnected"
             return {"ok": False, "error": str(exc)}
 
-        # Start periodic PING thread
         self.client.start_ping_thread()
-
-        # State transition to "active" and "connected" event are handled
-        # by the _on_welcome callback, which fires during connect().
         return {"ok": True}
 
     def handle_disconnect_hub(self, msg: dict) -> dict:
-        """Disconnect from the current RRC hub."""
         if self.client is not None:
             self.client.close()
         self._session_state = "disconnected"
@@ -174,96 +178,64 @@ class RrcBridge:
         return {"ok": True}
 
     def handle_join(self, msg: dict) -> dict:
-        """Join an RRC room."""
         if self._session_state != "active":
             return {"ok": False, "error": "Not connected to hub"}
-
         room = msg["room"].strip().lower()
-
         room_bytes = len(room.encode("utf-8"))
         if room_bytes > self.client.max_room_name_bytes:
-            return {
-                "ok": False,
-                "error": f"Room name too long: {room_bytes} bytes exceeds limit of {self.client.max_room_name_bytes} bytes",
-            }
-
+            return {"ok": False, "error": f"Room name too long: {room_bytes} bytes exceeds limit of {self.client.max_room_name_bytes} bytes"}
         if len(self.client.rooms) >= self.client.max_rooms_per_session:
-            return {
-                "ok": False,
-                "error": f"Cannot join more rooms: already in {len(self.client.rooms)} rooms (limit: {self.client.max_rooms_per_session})",
-            }
-
+            return {"ok": False, "error": f"Cannot join more rooms: already in {len(self.client.rooms)} rooms (limit: {self.client.max_rooms_per_session})"}
         self.client.join(room)
         return {"ok": True, "room": room}
 
     def handle_leave(self, msg: dict) -> dict:
-        """Leave an RRC room."""
         if self._session_state != "active":
             return {"ok": False, "error": "Not connected to hub"}
-
         room = msg["room"].strip().lower()
         self.client.part(room)
         return {"ok": True, "room": room}
 
     def handle_send(self, msg: dict) -> dict:
-        """Send a message to an RRC room."""
         if self._session_state != "active":
             return {"ok": False, "error": "Not connected to hub"}
-
         room = msg["room"].strip().lower()
         body = msg["body"]
-
-        # Validate body byte length against hub limit
         body_bytes = len(body.encode("utf-8"))
         if body_bytes > self.client.max_msg_body_bytes:
-            return {
-                "ok": False,
-                "error": f"Message too long: {body_bytes} bytes exceeds limit of {self.client.max_msg_body_bytes} bytes",
-            }
-
+            return {"ok": False, "error": f"Message too long: {body_bytes} bytes exceeds limit of {self.client.max_msg_body_bytes} bytes"}
         try:
             self.client.msg(room, body)
         except MessageTooLargeError:
             return {"ok": False, "error": "Message is too large to send (exceeds link MDU)"}
-
         return {"ok": True, "room": room}
 
     def handle_change_nick(self, msg: dict) -> dict:
-        """Change the user's nickname."""
         try:
             self.client.set_nickname(msg["nick"])
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
-
         self._nickname = msg["nick"]
         return {"ok": True, "nick": msg["nick"]}
 
     def handle_discover_hubs(self, msg: dict) -> dict:
-        """Start listening for RRC hub announces."""
         import RNS
-
         self._discovered_hubs = set()
 
         class _RrcAnnounceHandler:
-            """Announce handler object for RNS.Transport.register_announce_handler."""
             aspect_filter = "rrc.hub"
-
             def __init__(self, bridge):
                 self._bridge = bridge
-
             def received_announce(self, destination_hash, announced_identity, app_data):
                 hex_hash = destination_hash.hex()
                 if hex_hash not in self._bridge._discovered_hubs:
                     self._bridge._discovered_hubs.add(hex_hash)
-
-                    # Try to get a human-friendly name from app_data
                     name = None
                     if app_data:
                         try:
                             name = app_data.decode("utf-8")
                         except Exception:
                             name = None
-
                     self._bridge.write_event({
                         "event": "hub_discovered",
                         "hub_hash": hex_hash,
@@ -274,92 +246,77 @@ class RrcBridge:
         return {"ok": True}
 
     def handle_get_hubs(self, msg: dict) -> dict:
-        """Return current hubs/bookmarks data."""
         return {"ok": True, "hubs": self._hubs_data}
 
     def handle_save_hub(self, msg: dict) -> dict:
-        """Add or update a hub entry."""
-        from lxcf.hub_config import save_hubs
-
         tag = msg["tag"]
         destination = msg.get("destination")
         dest_name = msg.get("dest_name") or None
         hubs = self._hubs_data.setdefault("hubs", {})
         if tag in hubs:
             hubs[tag]["destination"] = destination
-            hubs[tag].setdefault("protocol", "rrc")
             if dest_name:
                 hubs[tag]["dest_name"] = dest_name
         else:
-            entry = {"destination": destination, "protocol": "rrc", "channels": []}
+            entry = {"destination": destination, "channels": []}
             if dest_name:
                 entry["dest_name"] = dest_name
             hubs[tag] = entry
-        save_hubs(self._store_path, self._hubs_data)
+        _save_bookmarks(self._hubs_data)
         return {"ok": True, "hubs": self._hubs_data}
 
     def handle_delete_hub(self, msg: dict) -> dict:
-        """Remove a hub entry."""
-        from lxcf.hub_config import save_hubs
-
-        tag = msg["tag"]
-        self._hubs_data.get("hubs", {}).pop(tag, None)
-        save_hubs(self._store_path, self._hubs_data)
+        self._hubs_data.get("hubs", {}).pop(msg["tag"], None)
+        _save_bookmarks(self._hubs_data)
         return {"ok": True, "hubs": self._hubs_data}
 
     def handle_toggle_bookmark(self, msg: dict) -> dict:
-        """Add or remove a bookmark under a hub."""
-        from lxcf.hub_config import add_bookmark, remove_bookmark, save_hubs
-
         channel_name = msg["channel"]
-        hub_tag = msg.get("hub", "local")
+        hub_tag = msg.get("hub")
+        if not hub_tag:
+            return {"ok": False, "error": "No hub tag specified"}
 
-        hub = self._hubs_data.get("hubs", {}).get(hub_tag, {})
-        channels = hub.get("channels", [])
-        exists = any(ch["name"] == channel_name for ch in channels)
+        hubs = self._hubs_data.setdefault("hubs", {})
+        hub = hubs.get(hub_tag)
+        if hub is None:
+            return {"ok": False, "error": f"Unknown hub: {hub_tag}"}
 
-        if exists:
-            remove_bookmark(self._hubs_data, hub_tag, channel_name)
+        channels = hub.setdefault("channels", [])
+        existing = [i for i, ch in enumerate(channels) if ch["name"] == channel_name]
+        if existing:
+            for i in reversed(existing):
+                channels.pop(i)
         else:
-            add_bookmark(self._hubs_data, hub_tag, channel_name)
+            channels.append({"name": channel_name})
 
-        save_hubs(self._store_path, self._hubs_data)
+        _save_bookmarks(self._hubs_data)
         return {"ok": True, "hubs": self._hubs_data}
 
     def handle_quit(self, msg: dict, req_id: str | None = None) -> None:
-        """Close client, write final response, sys.exit(0)."""
         if self.client is not None:
             self.client.close()
         if req_id:
             self.write_response(req_id, {"ok": True})
         sys.exit(0)
 
+
     # ------------------------------------------------------------------
-    # RRC client callbacks (stubs — implemented in tasks 1.3–1.5)
+    # RRC client callbacks
     # ------------------------------------------------------------------
 
     def _on_welcome(self, env: dict) -> None:
-        """Handle WELCOME envelope from hub."""
         from rrc_tui.constants import (
-            B_WELCOME_HUB,
-            B_WELCOME_LIMITS,
-            K_BODY,
-            L_MAX_MSG_BODY_BYTES,
-            L_MAX_NICK_BYTES,
-            L_MAX_ROOM_NAME_BYTES,
-            L_MAX_ROOMS_PER_SESSION,
+            B_WELCOME_HUB, B_WELCOME_LIMITS, K_BODY,
+            L_MAX_MSG_BODY_BYTES, L_MAX_NICK_BYTES,
+            L_MAX_ROOM_NAME_BYTES, L_MAX_ROOMS_PER_SESSION,
             L_RATE_LIMIT_MSGS_PER_MINUTE,
         )
-
         body = env.get(K_BODY)
         limits_out: dict = {}
-
         if isinstance(body, dict) and B_WELCOME_LIMITS in body:
             limits = body[B_WELCOME_LIMITS]
             if isinstance(limits, dict):
                 self._hub_limits = dict(limits)
-
-                # Also mirror into client attributes for bridge-level access
                 if self.client is not None:
                     if L_MAX_NICK_BYTES in limits:
                         self.client.max_nick_bytes = int(limits[L_MAX_NICK_BYTES])
@@ -371,7 +328,6 @@ class RrcBridge:
                         self.client.max_rooms_per_session = int(limits[L_MAX_ROOMS_PER_SESSION])
                     if L_RATE_LIMIT_MSGS_PER_MINUTE in limits:
                         self.client.rate_limit_msgs_per_minute = int(limits[L_RATE_LIMIT_MSGS_PER_MINUTE])
-
                 limits_out = {
                     "maxNickBytes": self.client.max_nick_bytes,
                     "maxRoomNameBytes": self.client.max_room_name_bytes,
@@ -379,92 +335,51 @@ class RrcBridge:
                     "maxRoomsPerSession": self.client.max_rooms_per_session,
                     "rateLimitMsgsPerMinute": self.client.rate_limit_msgs_per_minute,
                 }
-
         hub_name = ""
         if isinstance(body, dict):
             hub_name = body.get(B_WELCOME_HUB, "")
-
         self._session_state = "active"
-        self.write_event({
-            "event": "connected",
-            "hub_name": hub_name,
-            "limits": limits_out,
-        })
+        self.write_event({"event": "connected", "hub_name": hub_name, "limits": limits_out})
 
     def _on_message(self, env: dict) -> None:
-        """Handle MSG envelope from hub."""
         from rrc_tui.constants import K_BODY, K_NICK, K_ROOM, K_SRC, K_TS
-
         room = env.get(K_ROOM, "")
         src_raw = env.get(K_SRC, b"")
         src_hex = src_raw.hex() if isinstance(src_raw, (bytes, bytearray)) else str(src_raw)
         nick = env.get(K_NICK, "")
         body = env.get(K_BODY, "")
         ts_ms = env.get(K_TS, 0)
-        ts_seconds = ts_ms / 1000.0
-
         self.write_event({
-            "event": "message",
-            "room": room,
-            "src": src_hex,
-            "nick": nick,
-            "suffix": src_hex[:8],
-            "body": body,
-            "timestamp": ts_seconds,
+            "event": "message", "room": room, "src": src_hex,
+            "nick": nick, "suffix": src_hex[:8], "body": body,
+            "timestamp": ts_ms / 1000.0,
         })
 
     def _on_notice(self, env: dict) -> None:
-        """Handle NOTICE envelope from hub."""
         from rrc_tui.constants import K_BODY, K_ROOM
-
-        room = env.get(K_ROOM, "")
-        body = env.get(K_BODY, "")
-
-        self.write_event({
-            "event": "notice",
-            "room": room,
-            "body": body,
-        })
+        self.write_event({"event": "notice", "room": env.get(K_ROOM, ""), "body": env.get(K_BODY, "")})
 
     def _on_error(self, env: dict) -> None:
-        """Handle ERROR envelope from hub."""
         from rrc_tui.constants import K_BODY
-
         body = env.get(K_BODY, "")
-
-        if isinstance(body, str):
-            error_text = body
-        elif isinstance(body, dict):
-            error_text = str(body)
-        else:
-            error_text = str(body)
-
-        self.write_event({
-            "event": "error",
-            "body": error_text,
-        })
+        self.write_event({"event": "error", "body": str(body) if not isinstance(body, str) else body})
 
     def _on_joined(self, room: str, env: dict) -> None:
-        """Handle JOINED envelope from hub."""
         from rrc_tui.constants import B_JOINED_USERS, K_BODY
-
         body = env.get(K_BODY)
         members_raw = body.get(B_JOINED_USERS, []) if isinstance(body, dict) else []
         members = [m.hex() if isinstance(m, (bytes, bytearray)) else str(m) for m in members_raw]
         self.write_event({"event": "joined", "room": room, "members": members})
 
     def _on_parted(self, room: str, env: dict) -> None:
-        """Handle PARTED envelope from hub."""
         self.write_event({"event": "parted", "room": room})
 
     def _on_close(self) -> None:
-        """Handle Link close event."""
         self._session_state = "disconnected"
         self._hub_limits = {}
         self.write_event({"event": "disconnected"})
 
     def _on_pong(self, env: dict) -> None:
-        """Handle PONG envelope from hub — latency tracked by Client internally."""
         pass
 
     # ------------------------------------------------------------------
@@ -486,10 +401,8 @@ class RrcBridge:
     }
 
     def _dispatch(self, msg: dict) -> None:
-        """Route a parsed command to the appropriate handler."""
         action = msg.get("action")
         req_id = msg.get("id")
-
         if action == "init":
             try:
                 self.handle_init(msg)
@@ -499,18 +412,14 @@ class RrcBridge:
                 if req_id:
                     self.write_response(req_id, {"ok": False, "error": str(exc)})
             return
-
         if action == "quit":
             self.handle_quit(msg, req_id=req_id)
             return
-
         handler_name = self.HANDLERS.get(action)
         if handler_name is None:
-            resp = {"ok": False, "error": f"unknown action: {action}"}
             if req_id:
-                self.write_response(req_id, resp)
+                self.write_response(req_id, {"ok": False, "error": f"unknown action: {action}"})
             return
-
         try:
             result = getattr(self, handler_name)(msg)
             if req_id:
@@ -521,12 +430,7 @@ class RrcBridge:
             if req_id:
                 self.write_response(req_id, {"ok": False, "error": str(exc)})
 
-    # ------------------------------------------------------------------
-    # Main loop
-    # ------------------------------------------------------------------
-
     def run(self) -> None:
-        """Read NDJSON commands from stdin in a blocking loop."""
         for line in sys.stdin:
             line = line.strip()
             if not line:
@@ -545,8 +449,7 @@ def main():
         level=logging.INFO,
         format="[rrc_bridge] %(levelname)s %(message)s",
     )
-    bridge = RrcBridge()
-    bridge.run()
+    RrcBridge().run()
 
 
 if __name__ == "__main__":
