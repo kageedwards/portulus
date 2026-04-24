@@ -133,18 +133,39 @@ class RrcBridge:
         })
 
     def handle_connect_hub(self, msg: dict) -> dict:
-        """Connect to an RRC hub by destination hash.
+        """Connect to an RRC hub by destination hash."""
+        hub_hash_hex = msg.get("hub_hash", "")
+        try:
+            hub_hash_bytes = bytes.fromhex(hub_hash_hex)
+        except ValueError:
+            return {"ok": False, "error": f"Invalid hub hash: {hub_hash_hex}"}
 
-        Implemented in task 1.3.
-        """
-        raise NotImplementedError("handle_connect_hub is implemented in task 1.3")
+        if self.client is None:
+            return {"ok": False, "error": "Bridge not initialized"}
+
+        self._session_state = "connecting"
+        try:
+            self.client.connect(hub_hash_bytes, timeout_s=20.0)
+        except TimeoutError as exc:
+            self.write_event({"event": "error", "body": str(exc)})
+            self._session_state = "disconnected"
+            return {"ok": False, "error": str(exc)}
+
+        # Start periodic PING thread
+        self.client.start_ping_thread()
+
+        # State transition to "active" and "connected" event are handled
+        # by the _on_welcome callback, which fires during connect().
+        return {"ok": True}
 
     def handle_disconnect_hub(self, msg: dict) -> dict:
-        """Disconnect from the current RRC hub.
-
-        Implemented in task 1.3.
-        """
-        raise NotImplementedError("handle_disconnect_hub is implemented in task 1.3")
+        """Disconnect from the current RRC hub."""
+        if self.client is not None:
+            self.client.close()
+        self._session_state = "disconnected"
+        self._hub_limits = {}
+        self.write_event({"event": "disconnected"})
+        return {"ok": True}
 
     def handle_join(self, msg: dict) -> dict:
         """Join an RRC room.
@@ -221,11 +242,57 @@ class RrcBridge:
     # ------------------------------------------------------------------
 
     def _on_welcome(self, env: dict) -> None:
-        """Handle WELCOME envelope from hub.
+        """Handle WELCOME envelope from hub."""
+        from rrc_tui.constants import (
+            B_WELCOME_HUB,
+            B_WELCOME_LIMITS,
+            K_BODY,
+            L_MAX_MSG_BODY_BYTES,
+            L_MAX_NICK_BYTES,
+            L_MAX_ROOM_NAME_BYTES,
+            L_MAX_ROOMS_PER_SESSION,
+            L_RATE_LIMIT_MSGS_PER_MINUTE,
+        )
 
-        Implemented in task 1.3.
-        """
-        raise NotImplementedError("_on_welcome is implemented in task 1.3")
+        body = env.get(K_BODY)
+        limits_out: dict = {}
+
+        if isinstance(body, dict) and B_WELCOME_LIMITS in body:
+            limits = body[B_WELCOME_LIMITS]
+            if isinstance(limits, dict):
+                self._hub_limits = dict(limits)
+
+                # Also mirror into client attributes for bridge-level access
+                if self.client is not None:
+                    if L_MAX_NICK_BYTES in limits:
+                        self.client.max_nick_bytes = int(limits[L_MAX_NICK_BYTES])
+                    if L_MAX_ROOM_NAME_BYTES in limits:
+                        self.client.max_room_name_bytes = int(limits[L_MAX_ROOM_NAME_BYTES])
+                    if L_MAX_MSG_BODY_BYTES in limits:
+                        self.client.max_msg_body_bytes = int(limits[L_MAX_MSG_BODY_BYTES])
+                    if L_MAX_ROOMS_PER_SESSION in limits:
+                        self.client.max_rooms_per_session = int(limits[L_MAX_ROOMS_PER_SESSION])
+                    if L_RATE_LIMIT_MSGS_PER_MINUTE in limits:
+                        self.client.rate_limit_msgs_per_minute = int(limits[L_RATE_LIMIT_MSGS_PER_MINUTE])
+
+                limits_out = {
+                    "maxNickBytes": self.client.max_nick_bytes,
+                    "maxRoomNameBytes": self.client.max_room_name_bytes,
+                    "maxMsgBodyBytes": self.client.max_msg_body_bytes,
+                    "maxRoomsPerSession": self.client.max_rooms_per_session,
+                    "rateLimitMsgsPerMinute": self.client.rate_limit_msgs_per_minute,
+                }
+
+        hub_name = ""
+        if isinstance(body, dict):
+            hub_name = body.get(B_WELCOME_HUB, "")
+
+        self._session_state = "active"
+        self.write_event({
+            "event": "connected",
+            "hub_name": hub_name,
+            "limits": limits_out,
+        })
 
     def _on_message(self, env: dict) -> None:
         """Handle MSG envelope from hub.
@@ -263,18 +330,14 @@ class RrcBridge:
         raise NotImplementedError("_on_parted is implemented in task 1.4")
 
     def _on_close(self) -> None:
-        """Handle Link close event.
-
-        Implemented in task 1.3.
-        """
-        raise NotImplementedError("_on_close is implemented in task 1.3")
+        """Handle Link close event."""
+        self._session_state = "disconnected"
+        self._hub_limits = {}
+        self.write_event({"event": "disconnected"})
 
     def _on_pong(self, env: dict) -> None:
-        """Handle PONG envelope from hub.
-
-        Implemented in task 1.3.
-        """
-        raise NotImplementedError("_on_pong is implemented in task 1.3")
+        """Handle PONG envelope from hub — latency tracked by Client internally."""
+        pass
 
     # ------------------------------------------------------------------
     # Action dispatch
