@@ -202,17 +202,20 @@ function ensureVenv() {
         const pip = process.platform === "win32"
             ? path.join(VENV_DIR, "Scripts", "pip")
             : path.join(VENV_DIR, "bin", "pip");
+        const pipOpts = { stdio: ["pipe", "pipe", "pipe"] };
 
         // 1. LXCF (bundled package — pulls rns, lxmf, msgpack)
-        execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+        execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], pipOpts);
 
-        // 2. rrc-tui (MIT, by S. Miller KC1AWV) — --no-deps skips textual
+        // 2. cbor2 first (so rrc-tui's dep check finds it)
+        execFileSync(pip, ["install", "--quiet", CBOR2_PIN], pipOpts);
+
+        // 3. rrc-tui (MIT, by S. Miller KC1AWV) — --no-deps skips textual.
+        //    The pip resolver may warn about missing textual; this is expected
+        //    and harmless since our bridge never imports it.
         execFileSync(pip, [
             "install", "--quiet", "--no-deps", RRC_TUI_GIT,
-        ], { stdio: "inherit" });
-
-        // 3. cbor2 (rrc-tui's only runtime dep not already in the venv)
-        execFileSync(pip, ["install", "--quiet", CBOR2_PIN], { stdio: "inherit" });
+        ], pipOpts);
 
         fs.writeFileSync(venvVersionFile, currentStamp);
     } catch(err) {
