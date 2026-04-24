@@ -192,6 +192,14 @@ function ensureVenv() {
             ? path.join(VENV_DIR, "Scripts", "pip")
             : path.join(VENV_DIR, "bin", "pip");
         execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
+        // Install rrc-tui (MIT, by S. Miller KC1AWV) for the RRC bridge.
+        // Uses --no-deps to skip the textual TUI framework (not needed for
+        // the bridge) — we only need cbor2 which is installed explicitly.
+        execFileSync(pip, [
+            "install", "--quiet", "--no-deps",
+            "git+https://github.com/kc1awv/rrc-tui.git",
+        ], { stdio: "inherit" });
+        execFileSync(pip, ["install", "--quiet", "cbor2>=5.6.0"], { stdio: "inherit" });
         fs.writeFileSync(venvVersionFile, bundledVersion);
     } catch(err) {
         console.error("[bridge] failed to bootstrap venv:", err.message);
