@@ -27,7 +27,7 @@ import sys
 import threading
 import traceback
 
-from rrc_tui.client import Client, ClientConfig
+from rrc_tui.client import Client, ClientConfig, MessageTooLargeError
 
 log = logging.getLogger("rrc_bridge")
 
@@ -200,18 +200,37 @@ class RrcBridge:
         return {"ok": True, "room": room}
 
     def handle_send(self, msg: dict) -> dict:
-        """Send a message to an RRC room.
+        """Send a message to an RRC room."""
+        if self._session_state != "active":
+            return {"ok": False, "error": "Not connected to hub"}
 
-        Implemented in task 1.5.
-        """
-        raise NotImplementedError("handle_send is implemented in task 1.5")
+        room = msg["room"].strip().lower()
+        body = msg["body"]
+
+        # Validate body byte length against hub limit
+        body_bytes = len(body.encode("utf-8"))
+        if body_bytes > self.client.max_msg_body_bytes:
+            return {
+                "ok": False,
+                "error": f"Message too long: {body_bytes} bytes exceeds limit of {self.client.max_msg_body_bytes} bytes",
+            }
+
+        try:
+            self.client.msg(room, body)
+        except MessageTooLargeError:
+            return {"ok": False, "error": "Message is too large to send (exceeds link MDU)"}
+
+        return {"ok": True, "room": room}
 
     def handle_change_nick(self, msg: dict) -> dict:
-        """Change the user's nickname.
+        """Change the user's nickname."""
+        try:
+            self.client.set_nickname(msg["nick"])
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
 
-        Implemented in task 1.5.
-        """
-        raise NotImplementedError("handle_change_nick is implemented in task 1.5")
+        self._nickname = msg["nick"]
+        return {"ok": True, "nick": msg["nick"]}
 
     def handle_discover_hubs(self, msg: dict) -> dict:
         """Start listening for RRC hub announces.
@@ -313,25 +332,57 @@ class RrcBridge:
         })
 
     def _on_message(self, env: dict) -> None:
-        """Handle MSG envelope from hub.
+        """Handle MSG envelope from hub."""
+        from rrc_tui.constants import K_BODY, K_NICK, K_ROOM, K_SRC, K_TS
 
-        Implemented in task 1.5.
-        """
-        raise NotImplementedError("_on_message is implemented in task 1.5")
+        room = env.get(K_ROOM, "")
+        src_raw = env.get(K_SRC, b"")
+        src_hex = src_raw.hex() if isinstance(src_raw, (bytes, bytearray)) else str(src_raw)
+        nick = env.get(K_NICK, "")
+        body = env.get(K_BODY, "")
+        ts_ms = env.get(K_TS, 0)
+        ts_seconds = ts_ms / 1000.0
+
+        self.write_event({
+            "event": "message",
+            "room": room,
+            "src": src_hex,
+            "nick": nick,
+            "suffix": src_hex[:8],
+            "body": body,
+            "timestamp": ts_seconds,
+        })
 
     def _on_notice(self, env: dict) -> None:
-        """Handle NOTICE envelope from hub.
+        """Handle NOTICE envelope from hub."""
+        from rrc_tui.constants import K_BODY, K_ROOM
 
-        Implemented in task 1.5.
-        """
-        raise NotImplementedError("_on_notice is implemented in task 1.5")
+        room = env.get(K_ROOM, "")
+        body = env.get(K_BODY, "")
+
+        self.write_event({
+            "event": "notice",
+            "room": room,
+            "body": body,
+        })
 
     def _on_error(self, env: dict) -> None:
-        """Handle ERROR envelope from hub.
+        """Handle ERROR envelope from hub."""
+        from rrc_tui.constants import K_BODY
 
-        Implemented in task 1.5.
-        """
-        raise NotImplementedError("_on_error is implemented in task 1.5")
+        body = env.get(K_BODY, "")
+
+        if isinstance(body, str):
+            error_text = body
+        elif isinstance(body, dict):
+            error_text = str(body)
+        else:
+            error_text = str(body)
+
+        self.write_event({
+            "event": "error",
+            "body": error_text,
+        })
 
     def _on_joined(self, room: str, env: dict) -> None:
         """Handle JOINED envelope from hub."""
