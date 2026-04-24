@@ -239,19 +239,23 @@ class RrcBridge:
 
         self._discovered_hubs = set()
 
-        def _on_hub_announce(destination_hash, announced_identity, app_data):
-            hex_hash = destination_hash.hex()
-            if hex_hash not in self._discovered_hubs:
-                self._discovered_hubs.add(hex_hash)
-                self.write_event({
-                    "event": "hub_discovered",
-                    "hub_hash": hex_hash,
-                })
+        class _RrcAnnounceHandler:
+            """Announce handler object for RNS.Transport.register_announce_handler."""
+            aspect_filter = "rrc.hub"
 
-        RNS.Transport.register_announce_handler(
-            _on_hub_announce,
-            aspect_filter="rrc.hub",
-        )
+            def __init__(self, bridge):
+                self._bridge = bridge
+
+            def received_announce(self, destination_hash, announced_identity, app_data):
+                hex_hash = destination_hash.hex()
+                if hex_hash not in self._bridge._discovered_hubs:
+                    self._bridge._discovered_hubs.add(hex_hash)
+                    self._bridge.write_event({
+                        "event": "hub_discovered",
+                        "hub_hash": hex_hash,
+                    })
+
+        RNS.Transport.register_announce_handler(_RrcAnnounceHandler(self))
         return {"ok": True}
 
     def handle_get_hubs(self, msg: dict) -> dict:
