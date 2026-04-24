@@ -18,10 +18,11 @@ if(!api){
 const state = {
     nick: "anon",
     suffix: "",
-    channels: {},   // cid -> { name, hub, key, cid, messages: [], members: [] }
+    channels: {},   // cid -> { name, hub, key, cid, protocol: "lxcf"|"rrc", messages: [], members: [] }
     activeCid: null,
     hubs: { hubs: {} },  // hub-centric bookmarks from bookmarks.json
     revealHubs: false,
+    rrcConnections: {},  // hubHash -> { hubName, limits, rooms: Set }
 };
 
 // ------------------------------------------------------------------
@@ -79,10 +80,11 @@ function renderTabs() {
 
         const isBookmarked = isChannelBookmarked(ch.name, ch.hub, ch.key);
         const star = isBookmarked ? "★" : "☆";
+        const protoIcon = ch.protocol === "rrc" ? "◈" : "⬡";
         const label = state.revealHubs
             ? (ch.hub ? `${ch.hub}:${ch.name}` : ch.name)
             : cid;
-        tab.innerHTML = `<span class="tab-star${isBookmarked ? " bookmarked" : ""}">${star}</span><span>${escapeHtml(label)}</span><span class="close-tab">×</span>`;
+        tab.innerHTML = `<span class="tab-star${isBookmarked ? " bookmarked" : ""}">${star}</span><span>${protoIcon} ${escapeHtml(label)}</span><span class="close-tab">×</span>`;
 
         tab.addEventListener("click", (e) => {
             if(e.target.classList.contains("close-tab")){
@@ -197,12 +199,14 @@ function renderBookmarks() {
     for(const tag of tags){
         const hub = hubs[tag];
         const channels = hub.channels || [];
+        const protocol = hub.protocol || "lxcf";
+        const protoIcon = protocol === "rrc" ? "◈" : "⬡";
         hasAny = true;
 
         // Hub header — clickable to edit
         const header = document.createElement("div");
         header.className = "bookmark-header";
-        header.innerHTML = `${escapeHtml(tag === "local" ? "🌐 Local" : `⬡ ${tag}`)}`;
+        header.innerHTML = `${escapeHtml(tag === "local" ? "🌐 Local" : `${protoIcon} ${tag}`)}`;
         header.style.cursor = "pointer";
         header.addEventListener("click", () => openHubModal(tag));
         $splashBookmarks.appendChild(header);
@@ -220,11 +224,21 @@ function renderBookmarks() {
         for(const ch of [...channels].sort((a, b) => a.name.localeCompare(b.name))){
             const item = document.createElement("div");
             item.className = "bookmark-item";
-            item.innerHTML = `<span class="bookmark-icon">⬡</span><span>${escapeHtml(ch.name)}</span>`;
+            item.innerHTML = `<span class="bookmark-icon">${protoIcon}</span><span>${escapeHtml(ch.name)}</span>`;
             item.addEventListener("click", () => {
-                // If the hub has a destination, use the tag even if it's "local"
-                const hubArg = (tag === "local" && !hub.destination) ? null : tag;
-                joinChannel(ch.name, hubArg, ch.key);
+                if(protocol === "rrc"){
+                    // RRC bookmark: connect to hub first, then join room
+                    const dest = hub.destination;
+                    if(dest){
+                        api.rrcConnectHub(dest).then(() => {
+                            api.rrcJoin(ch.name);
+                        }).catch(console.error);
+                    }
+                } else {
+                    // LXCF bookmark
+                    const hubArg = (tag === "local" && !hub.destination) ? null : tag;
+                    joinChannel(ch.name, hubArg, ch.key);
+                }
             });
             $splashBookmarks.appendChild(item);
         }
@@ -259,11 +273,14 @@ function openHubModal(tag) {
         $tag.value = tag;
         $dest.value = hub.destination || "";
         $del.classList.remove("hidden");
+        // Store protocol for save handler
+        $modal.dataset.protocol = hub.protocol || "lxcf";
     } else {
         $title.textContent = "Add Hub";
         $tag.value = "";
         $dest.value = "";
         $del.classList.add("hidden");
+        $modal.dataset.protocol = "lxcf";
     }
 
     $modal.classList.remove("hidden");
@@ -405,7 +422,24 @@ function handleInput(line) {
         if(name) joinChannel(name, effectiveHub, key).catch(console.error);
 
     } else if(line.startsWith("/leave")){
-        if(cid) leaveChannel(cid);
+        if(cid){
+            const ch = state.channels[cid];
+            if(ch && ch.protocol === "rrc"){
+                api.rrcLeave(ch.name);
+                delete state.channels[cid];
+                const remaining = Object.keys(state.channels);
+                state.activeCid = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+                renderTabs();
+                if(state.activeCid){
+                    renderMessages();
+                    renderMembers();
+                } else {
+                    showSplash();
+                }
+            } else {
+                leaveChannel(cid);
+            }
+        }
 
     } else if(line === "/quit"){
         document.getElementById("quit-modal").classList.remove("hidden");
@@ -414,7 +448,10 @@ function handleInput(line) {
 
     } else if(line.startsWith("/nick ")){
         const newNick = line.slice(6).trim();
-        if(newNick) api.changeNick(newNick);
+        if(newNick){
+            api.changeNick(newNick);
+            api.rrcChangeNick(newNick);
+        }
 
     } else if(line.startsWith("/me ")){
         if(cid){
@@ -436,7 +473,12 @@ function handleInput(line) {
 
     } else {
         if(cid){
-            api.send(cid, line);
+            const ch = state.channels[cid];
+            if(ch && ch.protocol === "rrc"){
+                api.rrcSend(ch.name, line);
+            } else {
+                api.send(cid, line);
+            }
             // show own message immediately
             const ts = formatTime(Date.now() / 1000);
             const dn = displayNick(state.nick, state.suffix);
@@ -723,6 +765,110 @@ api.on("lxcf:members", (data) => {
             renderMembers();
         }
     }
+});
+
+// ------------------------------------------------------------------
+// Event wiring — RRC events from main process
+// ------------------------------------------------------------------
+
+api.on("rrc:init", (data) => {
+    // RRC identity ready — no UI change needed, LXCF init already set identity
+});
+
+api.on("rrc:connected", (data) => {
+    const hubHash = data.hub_hash || "";
+    state.rrcConnections[hubHash] = {
+        hubName: data.hub_name || hubHash,
+        limits: data.limits || {},
+        rooms: new Set(),
+    };
+});
+
+api.on("rrc:disconnected", (data) => {
+    const hubHash = data.hub_hash || "";
+    // Remove all RRC channels for this hub
+    for(const [cid, ch] of Object.entries(state.channels)){
+        if(ch.protocol === "rrc"){
+            delete state.channels[cid];
+        }
+    }
+    delete state.rrcConnections[hubHash];
+
+    if(state.activeCid && !state.channels[state.activeCid]){
+        const remaining = Object.keys(state.channels);
+        state.activeCid = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    }
+    renderTabs();
+    if(state.activeCid){
+        renderMessages();
+        renderMembers();
+    } else {
+        showSplash();
+    }
+});
+
+api.on("rrc:joined", (data) => {
+    const cid = `rrc:${data.room}`;
+    state.channels[cid] = {
+        name: data.room,
+        hub: null,
+        key: null,
+        protocol: "rrc",
+        messages: [],
+        members: (data.members || []).map(m => ({ nick: m, suffix: "", isSelf: false })),
+    };
+    addMessage(cid, `<span class="msg-system msg-join">Joined ${escapeHtml(data.room)}</span>`);
+    state.activeCid = cid;
+    renderTabs();
+    showChat();
+    renderMessages();
+    renderMembers();
+});
+
+api.on("rrc:parted", (data) => {
+    const cid = `rrc:${data.room}`;
+    if(state.channels[cid]){
+        addMessage(cid, `<span class="msg-system msg-leave">Left ${escapeHtml(data.room)}</span>`);
+    }
+    delete state.channels[cid];
+
+    if(state.activeCid === cid){
+        const remaining = Object.keys(state.channels);
+        state.activeCid = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    }
+    renderTabs();
+    if(state.activeCid){
+        renderMessages();
+        renderMembers();
+    } else {
+        showSplash();
+    }
+});
+
+api.on("rrc:message", (data) => {
+    const cid = `rrc:${data.room}`;
+    const ts = formatTime(data.timestamp);
+    const dn = displayNick(data.nick, data.suffix);
+    addMessage(cid, `<span class="msg-time">${ts}</span><span class="msg-nick">&lt;${escapeHtml(dn)}&gt;</span> <span class="msg-body">${escapeHtml(data.body)}</span>`);
+});
+
+api.on("rrc:notice", (data) => {
+    const cid = data.room ? `rrc:${data.room}` : state.activeCid;
+    if(cid){
+        addMessage(cid, `<span class="msg-system">${escapeHtml(data.body)}</span>`);
+    }
+});
+
+api.on("rrc:error", (data) => {
+    const cid = state.activeCid;
+    if(cid){
+        addMessage(cid, `<span class="msg-system" style="color:var(--danger)">${escapeHtml(data.body)}</span>`);
+    }
+});
+
+api.on("rrc:hub_discovered", (data) => {
+    // Could show in UI — for now just log
+    console.log("[rrc] hub discovered:", data.hub_hash);
 });
 
 // ------------------------------------------------------------------

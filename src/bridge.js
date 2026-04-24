@@ -1,6 +1,6 @@
 /**
  * Bridge manager — testable module for NDJSON communication
- * with the Python lxcf_bridge child process.
+ * with a Python bridge child process (LXCF or RRC).
  *
  * Extracted from main.js so it can be tested without Electron.
  */
@@ -10,10 +10,10 @@
  *
  * @param {object} opts
  * @param {function} opts.send - Function to send IPC events to the renderer: send(channel, data)
- * @param {function} opts.getBookmarks - Function returning current bookmarks array
+ * @param {string} [opts.eventPrefix="lxcf"] - Protocol prefix for IPC event channels
  * @returns {object} Bridge manager API
  */
-export function createBridgeManager({ send }) {
+export function createBridgeManager({ send, eventPrefix = "lxcf" }) {
     let reqCounter = 0;
     const pending = {};
     let stdinWrite = null;  // function to write to bridge stdin
@@ -50,7 +50,7 @@ export function createBridgeManager({ send }) {
     function handleBridgeEvent(msg) {
         switch(msg.event){
             case "ready":
-                send("lxcf:init", {
+                send(`${eventPrefix}:init`, {
                     nick: msg.nick,
                     address: msg.address,
                     suffix: msg.suffix,
@@ -58,31 +58,53 @@ export function createBridgeManager({ send }) {
                 });
                 break;
             case "message":
-                send("lxcf:message", msg);
+                send(`${eventPrefix}:message`, msg);
                 break;
             case "join":
-                send("lxcf:join", msg);
+                send(`${eventPrefix}:join`, msg);
                 break;
             case "leave":
-                send("lxcf:leave", msg);
+                send(`${eventPrefix}:leave`, msg);
                 break;
             case "nick":
-                send("lxcf:nick", {
+                send(`${eventPrefix}:nick`, {
                     oldNick: msg.old_nick,
                     newNick: msg.new_nick,
                 });
                 break;
             case "emote":
-                send("lxcf:emote", msg);
+                send(`${eventPrefix}:emote`, msg);
                 break;
             case "topic":
-                send("lxcf:topic", msg);
+                send(`${eventPrefix}:topic`, msg);
                 break;
             case "privmsg":
-                send("lxcf:privmsg", msg);
+                send(`${eventPrefix}:privmsg`, msg);
                 break;
             case "members":
-                send("lxcf:members", msg);
+                send(`${eventPrefix}:members`, msg);
+                break;
+            // RRC-specific events
+            case "connected":
+                send(`${eventPrefix}:connected`, msg);
+                break;
+            case "disconnected":
+                send(`${eventPrefix}:disconnected`, msg);
+                break;
+            case "joined":
+                send(`${eventPrefix}:joined`, msg);
+                break;
+            case "parted":
+                send(`${eventPrefix}:parted`, msg);
+                break;
+            case "notice":
+                send(`${eventPrefix}:notice`, msg);
+                break;
+            case "error":
+                send(`${eventPrefix}:error`, msg);
+                break;
+            case "hub_discovered":
+                send(`${eventPrefix}:hub_discovered`, msg);
                 break;
         }
     }

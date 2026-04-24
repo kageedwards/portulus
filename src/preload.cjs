@@ -22,6 +22,15 @@ contextBridge.exposeInMainWorld("portulus", {
     saveSettings: (s) => ipcRenderer.invoke("save-settings", s),
     quit: () => ipcRenderer.invoke("quit"),
 
+    // RRC commands
+    rrcConnectHub: (hubHash) => ipcRenderer.invoke("rrc-connect-hub", hubHash),
+    rrcDisconnectHub: (hubHash) => ipcRenderer.invoke("rrc-disconnect-hub", hubHash),
+    rrcJoin: (room) => ipcRenderer.invoke("rrc-join", room),
+    rrcLeave: (room) => ipcRenderer.invoke("rrc-leave", room),
+    rrcSend: (room, body) => ipcRenderer.invoke("rrc-send", room, body),
+    rrcChangeNick: (nick) => ipcRenderer.invoke("rrc-change-nick", nick),
+    rrcDiscoverHubs: () => ipcRenderer.invoke("rrc-discover-hubs"),
+
     // events from main
     on: (channel, callback) => {
         const listener = (event, ...args) => callback(...args);

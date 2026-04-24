@@ -123,7 +123,8 @@ function saveSettings(s) {
 // ------------------------------------------------------------------
 
 let win = null;
-let bridge = null;       // child_process handle
+let bridge = null;       // child_process handle (LXCF)
+let rrcBridge = null;    // child_process handle (RRC)
 let settings = loadSettings();
 let config = loadConfig();
 const resolvedNick = settings.nick || config.nick || "anon";
@@ -138,13 +139,16 @@ function send(channel, ...args) {
 }
 
 // ------------------------------------------------------------------
-// Python bridge manager
+// Python bridge managers
 // ------------------------------------------------------------------
 
-const mgr = createBridgeManager({
-    send,
-});
-const { bridgeRequest, bridgeSend } = mgr;
+const RRC_BRIDGE_SCRIPT = path.join(__dirname, "rrc_bridge.py");
+
+const lxcfMgr = createBridgeManager({ send, eventPrefix: "lxcf" });
+const { bridgeRequest, bridgeSend } = lxcfMgr;
+
+const rrcMgr = createBridgeManager({ send, eventPrefix: "rrc" });
+const { bridgeRequest: rrcBridgeRequest, bridgeSend: rrcBridgeSend } = rrcMgr;
 
 function findSystemPython() {
     const candidates = [
@@ -201,13 +205,13 @@ function spawnBridge() {
         stdio: ["pipe", "pipe", "pipe"],
     });
 
-    mgr.setStdinWrite((data) => {
+    lxcfMgr.setStdinWrite((data) => {
         if(bridge && bridge.stdin.writable) bridge.stdin.write(data);
     });
 
     // Parse NDJSON lines from stdout
     const rl = createInterface({ input: bridge.stdout });
-    rl.on("line", (line) => mgr.handleLine(line));
+    rl.on("line", (line) => lxcfMgr.handleLine(line));
 
     // Forward stderr to console
     bridge.stderr.on("data", (chunk) => {
@@ -217,10 +221,40 @@ function spawnBridge() {
     // Log exit
     bridge.on("exit", (code) => {
         if(code !== 0 && code !== null){
-            console.log(`[bridge] exited with code ${code}`);
+            console.log(`[lxcf-bridge] exited with code ${code}`);
         }
         bridge = null;
-        mgr.setStdinWrite(null);
+        lxcfMgr.setStdinWrite(null);
+    });
+}
+
+function spawnRrcBridge() {
+    ensureVenv();
+
+    rrcBridge = spawn(VENV_PYTHON, [RRC_BRIDGE_SCRIPT], {
+        stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    rrcMgr.setStdinWrite((data) => {
+        if(rrcBridge && rrcBridge.stdin.writable) rrcBridge.stdin.write(data);
+    });
+
+    // Parse NDJSON lines from stdout
+    const rl = createInterface({ input: rrcBridge.stdout });
+    rl.on("line", (line) => rrcMgr.handleLine(line));
+
+    // Forward stderr to console
+    rrcBridge.stderr.on("data", (chunk) => {
+        process.stderr.write(chunk);
+    });
+
+    // Log exit
+    rrcBridge.on("exit", (code) => {
+        if(code !== 0 && code !== null){
+            console.log(`[rrc-bridge] exited with code ${code}`);
+        }
+        rrcBridge = null;
+        rrcMgr.setStdinWrite(null);
     });
 }
 
@@ -275,8 +309,34 @@ function setupIPC() {
 
     ipcMain.handle("quit", async () => {
         try { await bridgeRequest("quit", {}); } catch(e) { /* ignore */ }
+        try { await rrcBridgeRequest("quit", {}); } catch(e) { /* ignore */ }
         app.quit();
     });
+
+    // ------------------------------------------------------------------
+    // RRC IPC handlers
+    // ------------------------------------------------------------------
+
+    ipcMain.handle("rrc-connect-hub", (_, hubHash) =>
+        rrcBridgeRequest("connect_hub", { hub_hash: hubHash }));
+
+    ipcMain.handle("rrc-disconnect-hub", (_, hubHash) =>
+        rrcBridgeRequest("disconnect_hub", { hub_hash: hubHash }));
+
+    ipcMain.handle("rrc-join", (_, room) =>
+        rrcBridgeRequest("join", { room }));
+
+    ipcMain.handle("rrc-leave", (_, room) =>
+        rrcBridgeRequest("leave", { room }));
+
+    ipcMain.handle("rrc-send", (_, room, body) =>
+        rrcBridgeRequest("send", { room, body }));
+
+    ipcMain.handle("rrc-change-nick", (_, nick) =>
+        rrcBridgeRequest("change_nick", { nick }));
+
+    ipcMain.handle("rrc-discover-hubs", () =>
+        rrcBridgeRequest("discover_hubs", {}));
 }
 
 // ------------------------------------------------------------------
@@ -316,13 +376,20 @@ app.whenReady().then(() => {
         use_local_rnsd: config.useLocalRnsd,
         rns_config_dir: RNS_CONFIG_PATH,
     });
+    spawnRrcBridge();
+    rrcBridgeSend("init", {
+        nick: resolvedNick,
+        rns_config_dir: RNS_CONFIG_PATH,
+    });
 });
 
 app.on("window-all-closed", () => {
     if(bridge) bridge.kill("SIGTERM");
+    if(rrcBridge) rrcBridge.kill("SIGTERM");
     app.quit();
 });
 
 app.on("quit", () => {
     if(bridge) bridge.kill("SIGKILL");
+    if(rrcBridge) rrcBridge.kill("SIGKILL");
 });
