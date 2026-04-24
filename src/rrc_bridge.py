@@ -256,7 +256,7 @@ class RrcBridge:
                 if hex_hash not in self._bridge._discovered_hubs:
                     self._bridge._discovered_hubs.add(hex_hash)
 
-                    # app_data may contain a hub name or other info
+                    # Try to get a human-friendly name from app_data
                     name = None
                     if app_data:
                         try:

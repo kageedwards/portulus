@@ -291,7 +291,7 @@ function renderBookmarks() {
                     const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
 
                     $title.textContent = "Add RRC Hub";
-                    $tag.value = hub.name || "";
+                    $tag.value = hub.name || hub.hash.slice(0, 12);
                     $dest.value = hub.hash;
                     $destname.value = "";
                     $del.classList.add("hidden");
@@ -304,8 +304,8 @@ function renderBookmarks() {
 
                 item.addEventListener("click", (e) => {
                     if(e.target.closest(".discover-add")) return;
-                    // Click the hub row itself to connect directly
-                    api.rrcConnectHub(hub.hash).catch(console.error);
+                    // Click the hub row to connect directly
+                    api.rrcConnectHub(hub.hash, null).catch(console.error);
                 });
 
                 $splashBookmarks.appendChild(item);
@@ -960,11 +960,8 @@ api.on("rrc:hub_discovered", (data) => {
     const hash = data.hub_hash;
     const name = data.name || null;
 
-    // Deduplicate in state
     if(state.discoveredHubs.some(d => d.hash === hash)) return;
     state.discoveredHubs.push({ hash, name });
-
-    // Re-render bookmarks to show the new discovered hub
     renderBookmarks();
 });
 
