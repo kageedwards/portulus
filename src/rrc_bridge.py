@@ -74,11 +74,63 @@ class RrcBridge:
     # ------------------------------------------------------------------
 
     def handle_init(self, msg: dict) -> None:
-        """Initialize RNS, rrc_tui.Client, wire events, emit 'ready'.
+        """Initialize RNS, rrc_tui.Client, wire events, emit 'ready'."""
+        import RNS
+        from lxcf.hub_config import load_hubs
 
-        Implemented in task 1.2.
-        """
-        raise NotImplementedError("handle_init is implemented in task 1.2")
+        nick = msg.get("nick", "anon")
+        rns_config_dir = msg.get("rns_config_dir")
+
+        if rns_config_dir:
+            rns_config_dir = os.path.expanduser(rns_config_dir)
+
+        store_path = os.path.expanduser("~/.lxcf")
+        self._store_path = store_path
+        identity_path = os.path.join(store_path, "identity")
+
+        # Initialize Reticulum
+        RNS.Reticulum(configdir=rns_config_dir)
+
+        # Load or create identity (same path as LXCF bridge)
+        os.makedirs(store_path, exist_ok=True)
+        if os.path.exists(identity_path):
+            identity = RNS.Identity.from_file(identity_path)
+            if identity is None:
+                # File corrupt — create fresh
+                identity = RNS.Identity()
+                identity.to_file(identity_path)
+        else:
+            identity = RNS.Identity()
+            identity.to_file(identity_path)
+
+        self._nickname = nick
+
+        # Create RRC client
+        self.client = Client(identity, config=None, nickname=nick)
+
+        # Wire RRC client callbacks
+        self.client.on_welcome = self._on_welcome
+        self.client.on_message = self._on_message
+        self.client.on_notice = self._on_notice
+        self.client.on_error = self._on_error
+        self.client.on_joined = self._on_joined
+        self.client.on_parted = self._on_parted
+        self.client.on_close = self._on_close
+        self.client.on_pong = self._on_pong
+
+        # Load hubs/bookmarks
+        self._hubs_data = load_hubs(store_path)
+
+        # Emit ready event
+        address = identity.hash.hex()
+        suffix = address[:8]
+        self.write_event({
+            "event": "ready",
+            "nick": nick,
+            "address": address,
+            "suffix": suffix,
+            "hubs": self._hubs_data,
+        })
 
     def handle_connect_hub(self, msg: dict) -> dict:
         """Connect to an RRC hub by destination hash.
