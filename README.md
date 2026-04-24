@@ -106,7 +106,3 @@ This app works best with default config and a running Reticulum shared instance.
 
 - [LXCF](https://github.com/kageedwards/lxcf) — Python protocol library (via bridge subprocess)
 - [Electron](https://www.electronjs.org/)
-
-## License
-
-MIT
