@@ -49,6 +49,7 @@ class RrcBridge:
         self._session_state: str = "disconnected"  # disconnected | connecting | awaiting_welcome | active
         self._hub_limits: dict = {}
         self._nickname: str | None = None
+        self._discovered_hubs: set = set()
 
     # ------------------------------------------------------------------
     # Thread-safe stdout writers
@@ -233,46 +234,80 @@ class RrcBridge:
         return {"ok": True, "nick": msg["nick"]}
 
     def handle_discover_hubs(self, msg: dict) -> dict:
-        """Start listening for RRC hub announces.
+        """Start listening for RRC hub announces."""
+        import RNS
 
-        Implemented in task 1.7.
-        """
-        raise NotImplementedError("handle_discover_hubs is implemented in task 1.7")
+        self._discovered_hubs = set()
+
+        def _on_hub_announce(destination_hash, announced_identity, app_data):
+            hex_hash = destination_hash.hex()
+            if hex_hash not in self._discovered_hubs:
+                self._discovered_hubs.add(hex_hash)
+                self.write_event({
+                    "event": "hub_discovered",
+                    "hub_hash": hex_hash,
+                })
+
+        RNS.Transport.register_announce_handler(
+            _on_hub_announce,
+            aspect_filter="rrc.hub",
+        )
+        return {"ok": True}
 
     def handle_get_hubs(self, msg: dict) -> dict:
-        """Return current hubs/bookmarks data.
-
-        Implemented in task 1.8.
-        """
-        raise NotImplementedError("handle_get_hubs is implemented in task 1.8")
+        """Return current hubs/bookmarks data."""
+        return {"ok": True, "hubs": self._hubs_data}
 
     def handle_save_hub(self, msg: dict) -> dict:
-        """Add or update a hub entry.
+        """Add or update a hub entry."""
+        from lxcf.hub_config import save_hubs
 
-        Implemented in task 1.8.
-        """
-        raise NotImplementedError("handle_save_hub is implemented in task 1.8")
+        tag = msg["tag"]
+        destination = msg.get("destination")
+        hubs = self._hubs_data.setdefault("hubs", {})
+        if tag in hubs:
+            hubs[tag]["destination"] = destination
+            hubs[tag].setdefault("protocol", "rrc")
+        else:
+            hubs[tag] = {"destination": destination, "protocol": "rrc", "channels": []}
+        save_hubs(self._store_path, self._hubs_data)
+        return {"ok": True, "hubs": self._hubs_data}
 
     def handle_delete_hub(self, msg: dict) -> dict:
-        """Remove a hub entry.
+        """Remove a hub entry."""
+        from lxcf.hub_config import save_hubs
 
-        Implemented in task 1.8.
-        """
-        raise NotImplementedError("handle_delete_hub is implemented in task 1.8")
+        tag = msg["tag"]
+        self._hubs_data.get("hubs", {}).pop(tag, None)
+        save_hubs(self._store_path, self._hubs_data)
+        return {"ok": True, "hubs": self._hubs_data}
 
     def handle_toggle_bookmark(self, msg: dict) -> dict:
-        """Add or remove a bookmark under a hub.
+        """Add or remove a bookmark under a hub."""
+        from lxcf.hub_config import add_bookmark, remove_bookmark, save_hubs
 
-        Implemented in task 1.8.
-        """
-        raise NotImplementedError("handle_toggle_bookmark is implemented in task 1.8")
+        channel_name = msg["channel"]
+        hub_tag = msg.get("hub", "local")
+
+        hub = self._hubs_data.get("hubs", {}).get(hub_tag, {})
+        channels = hub.get("channels", [])
+        exists = any(ch["name"] == channel_name for ch in channels)
+
+        if exists:
+            remove_bookmark(self._hubs_data, hub_tag, channel_name)
+        else:
+            add_bookmark(self._hubs_data, hub_tag, channel_name)
+
+        save_hubs(self._store_path, self._hubs_data)
+        return {"ok": True, "hubs": self._hubs_data}
 
     def handle_quit(self, msg: dict, req_id: str | None = None) -> None:
-        """Close client, write final response, sys.exit(0).
-
-        Implemented in task 1.8.
-        """
-        raise NotImplementedError("handle_quit is implemented in task 1.8")
+        """Close client, write final response, sys.exit(0)."""
+        if self.client is not None:
+            self.client.close()
+        if req_id:
+            self.write_response(req_id, {"ok": True})
+        sys.exit(0)
 
     # ------------------------------------------------------------------
     # RRC client callbacks (stubs — implemented in tasks 1.3–1.5)
