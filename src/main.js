@@ -162,22 +162,33 @@ function findSystemPython() {
     return "python3"; // fall back to PATH lookup
 }
 
+// Pinned dependency versions — bump these to trigger a venv rebuild.
+// The version stamp is a composite of all three; if any changes, the
+// venv is torn down and rebuilt from scratch on next launch.
+const RRC_TUI_GIT = "git+https://github.com/kc1awv/rrc-tui.git";
+const RRC_TUI_PIN = "0.1.0";   // bump when upstream releases
+const CBOR2_PIN   = "cbor2>=5.6.0";
+
 function ensureVenv() {
-    // Check if venv needs (re)building by comparing bundled lxcf version
-    const venvVersionFile = path.join(VENV_DIR, ".lxcf-version");
-    let bundledVersion = "unknown";
+    const venvVersionFile = path.join(VENV_DIR, ".portulus-deps");
+
+    // Build a composite stamp: lxcf version + rrc-tui pin + cbor2 pin
+    let lxcfVersion = "unknown";
     try {
         const pkg = JSON.parse(fs.readFileSync(path.join(LXCF_PKG_DIR, "package.json"), "utf-8"));
-        bundledVersion = pkg.version || "unknown";
+        lxcfVersion = pkg.version || "unknown";
     } catch(e) { /* use unknown */ }
+
+    const currentStamp = `lxcf=${lxcfVersion};rrc-tui=${RRC_TUI_PIN};cbor2=${CBOR2_PIN}`;
 
     if(fs.existsSync(VENV_PYTHON)){
         try {
             const installed = fs.readFileSync(venvVersionFile, "utf-8").trim();
-            if(installed === bundledVersion) return;
-            console.log(`[bridge] lxcf version changed (${installed} → ${bundledVersion}), rebuilding venv…`);
+            if(installed === currentStamp) return;
+            console.log(`[bridge] deps changed, rebuilding venv…`);
+            console.log(`[bridge]   was: ${installed}`);
+            console.log(`[bridge]   now: ${currentStamp}`);
         } catch(e) {
-            // No version file — rebuild to be safe
             console.log("[bridge] venv version unknown, rebuilding…");
         }
         fs.rmSync(VENV_DIR, { recursive: true, force: true });
@@ -191,16 +202,19 @@ function ensureVenv() {
         const pip = process.platform === "win32"
             ? path.join(VENV_DIR, "Scripts", "pip")
             : path.join(VENV_DIR, "bin", "pip");
+
+        // 1. LXCF (bundled package — pulls rns, lxmf, msgpack)
         execFileSync(pip, ["install", "--quiet", LXCF_PKG_DIR], { stdio: "inherit" });
-        // Install rrc-tui (MIT, by S. Miller KC1AWV) for the RRC bridge.
-        // Uses --no-deps to skip the textual TUI framework (not needed for
-        // the bridge) — we only need cbor2 which is installed explicitly.
+
+        // 2. rrc-tui (MIT, by S. Miller KC1AWV) — --no-deps skips textual
         execFileSync(pip, [
-            "install", "--quiet", "--no-deps",
-            "git+https://github.com/kc1awv/rrc-tui.git",
+            "install", "--quiet", "--no-deps", RRC_TUI_GIT,
         ], { stdio: "inherit" });
-        execFileSync(pip, ["install", "--quiet", "cbor2>=5.6.0"], { stdio: "inherit" });
-        fs.writeFileSync(venvVersionFile, bundledVersion);
+
+        // 3. cbor2 (rrc-tui's only runtime dep not already in the venv)
+        execFileSync(pip, ["install", "--quiet", CBOR2_PIN], { stdio: "inherit" });
+
+        fs.writeFileSync(venvVersionFile, currentStamp);
     } catch(err) {
         console.error("[bridge] failed to bootstrap venv:", err.message);
     }
