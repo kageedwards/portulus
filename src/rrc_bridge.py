@@ -168,18 +168,36 @@ class RrcBridge:
         return {"ok": True}
 
     def handle_join(self, msg: dict) -> dict:
-        """Join an RRC room.
+        """Join an RRC room."""
+        if self._session_state != "active":
+            return {"ok": False, "error": "Not connected to hub"}
 
-        Implemented in task 1.4.
-        """
-        raise NotImplementedError("handle_join is implemented in task 1.4")
+        room = msg["room"].strip().lower()
+
+        room_bytes = len(room.encode("utf-8"))
+        if room_bytes > self.client.max_room_name_bytes:
+            return {
+                "ok": False,
+                "error": f"Room name too long: {room_bytes} bytes exceeds limit of {self.client.max_room_name_bytes} bytes",
+            }
+
+        if len(self.client.rooms) >= self.client.max_rooms_per_session:
+            return {
+                "ok": False,
+                "error": f"Cannot join more rooms: already in {len(self.client.rooms)} rooms (limit: {self.client.max_rooms_per_session})",
+            }
+
+        self.client.join(room)
+        return {"ok": True, "room": room}
 
     def handle_leave(self, msg: dict) -> dict:
-        """Leave an RRC room.
+        """Leave an RRC room."""
+        if self._session_state != "active":
+            return {"ok": False, "error": "Not connected to hub"}
 
-        Implemented in task 1.4.
-        """
-        raise NotImplementedError("handle_leave is implemented in task 1.4")
+        room = msg["room"].strip().lower()
+        self.client.part(room)
+        return {"ok": True, "room": room}
 
     def handle_send(self, msg: dict) -> dict:
         """Send a message to an RRC room.
@@ -316,18 +334,17 @@ class RrcBridge:
         raise NotImplementedError("_on_error is implemented in task 1.5")
 
     def _on_joined(self, room: str, env: dict) -> None:
-        """Handle JOINED envelope from hub.
+        """Handle JOINED envelope from hub."""
+        from rrc_tui.constants import B_JOINED_USERS, K_BODY
 
-        Implemented in task 1.4.
-        """
-        raise NotImplementedError("_on_joined is implemented in task 1.4")
+        body = env.get(K_BODY)
+        members_raw = body.get(B_JOINED_USERS, []) if isinstance(body, dict) else []
+        members = [m.hex() if isinstance(m, (bytes, bytearray)) else str(m) for m in members_raw]
+        self.write_event({"event": "joined", "room": room, "members": members})
 
     def _on_parted(self, room: str, env: dict) -> None:
-        """Handle PARTED envelope from hub.
-
-        Implemented in task 1.4.
-        """
-        raise NotImplementedError("_on_parted is implemented in task 1.4")
+        """Handle PARTED envelope from hub."""
+        self.write_event({"event": "parted", "room": room})
 
     def _on_close(self) -> None:
         """Handle Link close event."""
