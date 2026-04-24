@@ -23,6 +23,7 @@ const state = {
     hubs: { hubs: {} },  // hub-centric bookmarks from bookmarks.json
     revealHubs: false,
     rrcConnections: {},  // hubHash -> { hubName, limits, rooms: Set }
+    discoveredHubs: [],  // [{ hash, name }] — from rrc:hub_discovered events
 };
 
 // ------------------------------------------------------------------
@@ -253,6 +254,63 @@ function renderBookmarks() {
         addBtn.innerHTML = `<span class="bookmark-icon">+</span><span>Add hub</span>`;
         addBtn.addEventListener("click", () => openHubModal(null));
         $splashBookmarks.appendChild(addBtn);
+    }
+
+    // Discovered RRC hubs (appended below Add hub to avoid UI shifts)
+    if(state.discoveredHubs.length > 0){
+        const savedHashes = new Set(
+            Object.values(hubs).map(h => h.destination).filter(Boolean)
+        );
+
+        const unsaved = state.discoveredHubs.filter(d => !savedHashes.has(d.hash));
+        if(unsaved.length > 0){
+            const header = document.createElement("div");
+            header.className = "bookmark-header";
+            header.style.marginTop = "12px";
+            header.innerHTML = `◈ Discovered`;
+            $splashBookmarks.appendChild(header);
+
+            for(const hub of unsaved){
+                const label = hub.name
+                    ? `${escapeHtml(hub.name)} <span style="opacity:0.5">${escapeHtml(hub.hash.slice(0, 12))}…</span>`
+                    : `<span style="font-family:monospace">${escapeHtml(hub.hash.slice(0, 24))}…</span>`;
+
+                const item = document.createElement("div");
+                item.className = "bookmark-item";
+                item.innerHTML = `<span class="bookmark-icon">◈</span><span>${label}</span><button class="discover-add" title="Save as hub">+</button>`;
+
+                item.querySelector(".discover-add").addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    const $modal = document.getElementById("hub-modal");
+                    const $tag = document.getElementById("hub-modal-tag");
+                    const $dest = document.getElementById("hub-modal-dest");
+                    const $title = document.getElementById("hub-modal-title");
+                    const $del = document.getElementById("hub-modal-delete");
+                    const $destname = document.getElementById("hub-modal-destname");
+                    const $destnameRow = document.getElementById("hub-modal-destname-row");
+                    const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
+
+                    $title.textContent = "Add RRC Hub";
+                    $tag.value = hub.name || "";
+                    $dest.value = hub.hash;
+                    $destname.value = "";
+                    $del.classList.add("hidden");
+                    $modal.dataset.protocol = "rrc";
+                    protoBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.proto === "rrc"));
+                    $destnameRow.classList.remove("hidden");
+                    $modal.classList.remove("hidden");
+                    $tag.focus();
+                });
+
+                item.addEventListener("click", (e) => {
+                    if(e.target.closest(".discover-add")) return;
+                    // Click the hub row itself to connect directly
+                    api.rrcConnectHub(hub.hash).catch(console.error);
+                });
+
+                $splashBookmarks.appendChild(item);
+            }
+        }
     }
 }
 
@@ -663,32 +721,6 @@ document.getElementById("splash-go").addEventListener("click", () => {
     handleInput(line);
 });
 
-document.getElementById("btn-discover-rrc").addEventListener("click", () => {
-    const $btn = document.getElementById("btn-discover-rrc");
-    const $results = document.getElementById("discover-results");
-    $results.innerHTML = `<div class="discover-scanning">Scanning…</div>`;
-    $btn.disabled = true;
-    $btn.textContent = "◈ Scanning…";
-    api.rrcDiscoverHubs().then(() => {
-        // Scanning started — results arrive via rrc:hub_discovered events.
-        // Reset button after a timeout so user can re-scan.
-        setTimeout(() => {
-            $btn.disabled = false;
-            $btn.textContent = "◈ Discover RRC Hubs";
-            const scanning = $results.querySelector(".discover-scanning");
-            if(scanning && $results.children.length === 1){
-                scanning.textContent = "No hubs found yet — try again later";
-            } else if(scanning){
-                scanning.remove();
-            }
-        }, 10000);
-    }).catch(() => {
-        $btn.disabled = false;
-        $btn.textContent = "◈ Discover RRC Hubs";
-        $results.innerHTML = `<div class="discover-scanning" style="color:var(--danger)">Discovery failed — RRC bridge not ready</div>`;
-    });
-});
-
 document.getElementById("btn-quit").addEventListener("click", () => {
     document.getElementById("quit-modal").classList.remove("hidden");
     document.getElementById("quit-confirm").focus();
@@ -829,7 +861,8 @@ api.on("lxcf:members", (data) => {
 // ------------------------------------------------------------------
 
 api.on("rrc:init", (data) => {
-    // RRC identity ready — no UI change needed, LXCF init already set identity
+    // RRC bridge ready — start hub discovery automatically
+    api.rrcDiscoverHubs().catch(() => {});
 });
 
 api.on("rrc:connected", (data) => {
@@ -926,44 +959,13 @@ api.on("rrc:error", (data) => {
 api.on("rrc:hub_discovered", (data) => {
     const hash = data.hub_hash;
     const name = data.name || null;
-    const $results = document.getElementById("discover-results");
-    if(!$results) return;
 
-    // Skip if already shown
-    if($results.querySelector(`[data-hash="${hash}"]`)) return;
+    // Deduplicate in state
+    if(state.discoveredHubs.some(d => d.hash === hash)) return;
+    state.discoveredHubs.push({ hash, name });
 
-    const displayLabel = name
-        ? `${escapeHtml(name)} <span style="opacity:0.5">${escapeHtml(hash.slice(0, 16))}…</span>`
-        : escapeHtml(hash);
-
-    const item = document.createElement("div");
-    item.className = "discover-item";
-    item.dataset.hash = hash;
-    item.innerHTML = `<span class="discover-icon">◈</span><span class="discover-hash">${displayLabel}</span><button class="discover-add" title="Save as hub">+</button>`;
-
-    item.querySelector(".discover-add").addEventListener("click", () => {
-        const $modal = document.getElementById("hub-modal");
-        const $tag = document.getElementById("hub-modal-tag");
-        const $dest = document.getElementById("hub-modal-dest");
-        const $title = document.getElementById("hub-modal-title");
-        const $del = document.getElementById("hub-modal-delete");
-        const $destname = document.getElementById("hub-modal-destname");
-        const $destnameRow = document.getElementById("hub-modal-destname-row");
-        const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
-
-        $title.textContent = "Add RRC Hub";
-        $tag.value = name || "";
-        $dest.value = hash;
-        $destname.value = "";
-        $del.classList.add("hidden");
-        $modal.dataset.protocol = "rrc";
-        protoBtns.forEach(btn => btn.classList.toggle("active", btn.dataset.proto === "rrc"));
-        $destnameRow.classList.remove("hidden");
-        $modal.classList.remove("hidden");
-        $tag.focus();
-    });
-
-    $results.appendChild(item);
+    // Re-render bookmarks to show the new discovered hub
+    renderBookmarks();
 });
 
 // ------------------------------------------------------------------
