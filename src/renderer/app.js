@@ -266,6 +266,7 @@ function openHubModal(tag) {
     const $dest = document.getElementById("hub-modal-dest");
     const $title = document.getElementById("hub-modal-title");
     const $del = document.getElementById("hub-modal-delete");
+    const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
 
     if(tag){
         const hub = (state.hubs.hubs || {})[tag] || {};
@@ -273,7 +274,6 @@ function openHubModal(tag) {
         $tag.value = tag;
         $dest.value = hub.destination || "";
         $del.classList.remove("hidden");
-        // Store protocol for save handler
         $modal.dataset.protocol = hub.protocol || "lxcf";
     } else {
         $title.textContent = "Add Hub";
@@ -283,6 +283,11 @@ function openHubModal(tag) {
         $modal.dataset.protocol = "lxcf";
     }
 
+    // Sync protocol toggle buttons
+    protoBtns.forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.proto === $modal.dataset.protocol);
+    });
+
     $modal.classList.remove("hidden");
     $tag.focus();
 }
@@ -291,12 +296,31 @@ function closeHubModal() {
     document.getElementById("hub-modal").classList.add("hidden");
 }
 
+// Protocol toggle in hub modal
+document.getElementById("hub-modal-protocol").addEventListener("click", (e) => {
+    const btn = e.target.closest(".proto-btn");
+    if(!btn) return;
+    const $modal = document.getElementById("hub-modal");
+    $modal.dataset.protocol = btn.dataset.proto;
+    document.querySelectorAll("#hub-modal-protocol .proto-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.proto === btn.dataset.proto);
+    });
+});
+
 document.getElementById("hub-modal-save").addEventListener("click", async () => {
     const tag = document.getElementById("hub-modal-tag").value.trim();
     const dest = document.getElementById("hub-modal-dest").value.trim() || null;
+    const protocol = document.getElementById("hub-modal").dataset.protocol || "lxcf";
     if(!tag) return;
-    const result = await api.saveHub(tag, dest);
-    state.hubs = result.hubs || result;
+
+    if(protocol === "rrc"){
+        // Save via RRC bridge (sets protocol: "rrc" automatically)
+        const result = await api.rrcSaveHub(tag, dest);
+        state.hubs = result.hubs || result;
+    } else {
+        const result = await api.saveHub(tag, dest);
+        state.hubs = result.hubs || result;
+    }
     closeHubModal();
     renderBookmarks();
     renderTabs();

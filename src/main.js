@@ -362,6 +362,12 @@ function setupIPC() {
 
     ipcMain.handle("rrc-discover-hubs", () =>
         rrcBridgeRequest("discover_hubs", {}));
+
+    ipcMain.handle("rrc-save-hub", (_, tag, destination) =>
+        rrcBridgeRequest("save_hub", { tag, destination }));
+
+    ipcMain.handle("rrc-delete-hub", (_, tag) =>
+        rrcBridgeRequest("delete_hub", { tag }));
 }
 
 // ------------------------------------------------------------------

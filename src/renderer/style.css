@@ -1051,3 +1051,24 @@ body {
     background: var(--accent);
     color: var(--bg-deep);
 }
+
+/* Protocol toggle in hub modal */
+.proto-btn {
+    flex: 1;
+    padding: 6px 12px;
+    border: 1px solid var(--border, #444);
+    background: transparent;
+    color: var(--text-dim, #888);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+.proto-btn.active {
+    background: var(--accent, #4a9eff);
+    color: var(--bg, #000);
+    border-color: var(--accent, #4a9eff);
+}
+.proto-btn:hover:not(.active) {
+    border-color: var(--text-dim, #888);
+}
