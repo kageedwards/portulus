@@ -288,7 +288,17 @@ function renderBookmarks() {
             empty.className = "bookmark-item";
             empty.style.color = "var(--text-dim)";
             empty.style.fontSize = "12px";
-            empty.innerHTML = `<span class="bookmark-icon">·</span><span>No bookmarked rooms</span>`;
+            empty.style.cursor = "pointer";
+            empty.innerHTML = `<span class="bookmark-icon">·</span><span>No bookmarked rooms — click to join</span>`;
+            const hubTag = tag;
+            empty.addEventListener("click", () => {
+                // Pre-fill: "/join #⌷ hubTag" with cursor at ⌷
+                const prefix = "/join #";
+                const suffix = ` ${hubTag}`;
+                $splashInput.value = prefix + suffix;
+                $splashInput.focus();
+                $splashInput.setSelectionRange(prefix.length, prefix.length);
+            });
             $splashBookmarks.appendChild(empty);
             continue;
         }
