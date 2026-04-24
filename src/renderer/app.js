@@ -293,12 +293,15 @@ function renderBookmarks() {
             const hubTag = tag;
             const hubDest = hub.destination || hubTag;
             empty.addEventListener("click", () => {
-                // Use destination hash (no spaces) instead of display name
                 const prefix = "/join #";
                 const suffix = ` ${hubDest}`;
                 $splashInput.value = prefix + suffix;
                 $splashInput.focus();
-                $splashInput.setSelectionRange(prefix.length, prefix.length);
+                // Scroll to start first, then move cursor to entry point
+                $splashInput.setSelectionRange(0, 0);
+                requestAnimationFrame(() => {
+                    $splashInput.setSelectionRange(prefix.length, prefix.length);
+                });
             });
             $splashBookmarks.appendChild(empty);
             continue;
