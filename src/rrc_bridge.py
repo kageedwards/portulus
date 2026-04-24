@@ -75,6 +75,7 @@ class RrcBridge:
         self._hub_limits: dict = {}
         self._nickname: str | None = None
         self._discovered_hubs: set = set()
+        self._connected_hub_hash: str | None = None
 
     # ------------------------------------------------------------------
     # Thread-safe stdout writers
@@ -158,6 +159,7 @@ class RrcBridge:
         if dest_name:
             self.client.config = ClientConfig(dest_name=dest_name)
 
+        self._connected_hub_hash = hub_hash_hex
         self._session_state = "connecting"
         try:
             self.client.connect(hub_hash_bytes, timeout_s=20.0)
@@ -174,6 +176,7 @@ class RrcBridge:
             self.client.close()
         self._session_state = "disconnected"
         self._hub_limits = {}
+        self._connected_hub_hash = None
         self.write_event({"event": "disconnected"})
         return {"ok": True}
 
@@ -352,7 +355,7 @@ class RrcBridge:
         if isinstance(body, dict):
             hub_name = body.get(B_WELCOME_HUB, "")
         self._session_state = "active"
-        self.write_event({"event": "connected", "hub_name": hub_name, "limits": limits_out})
+        self.write_event({"event": "connected", "hub_name": hub_name, "hub_hash": self._connected_hub_hash or "", "limits": limits_out})
 
     def _on_message(self, env: dict) -> None:
         from rrc_tui.constants import K_BODY, K_NICK, K_ROOM, K_SRC, K_TS
