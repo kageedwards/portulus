@@ -605,7 +605,6 @@ function handleInput(line) {
         const effectiveHub = hub || (activeCh?.hub || null);
 
         // Check if this should route to RRC
-        // First try tag lookup, then try matching by destination hash
         let hubEntry = effectiveHub ? (state.rrcHubs.hubs || {})[effectiveHub] : null;
         let rrcDest = hubEntry ? hubEntry.destination : null;
         let rrcDestName = hubEntry ? (hubEntry.dest_name || null) : null;
@@ -620,13 +619,22 @@ function handleInput(line) {
                     break;
                 }
             }
-            // Even if not saved, treat a raw hex hash as an RRC direct connect
             if(!hubEntry){
                 rrcDest = effectiveHub;
             }
         }
 
-        const isRrc = !!rrcDest || (activeCh && activeCh.protocol === "rrc" && !hub);
+        // If active tab is RRC and we still don't have a dest, inherit from connection
+        if(!rrcDest && activeCh && activeCh.protocol === "rrc" && !hub){
+            // Find the dest from active RRC connections
+            for(const [connHash, conn] of Object.entries(state.rrcConnections)){
+                rrcDest = connHash;
+                rrcDestName = null;
+                break;
+            }
+        }
+
+        const isRrc = !!rrcDest;
 
         if(isRrc && rrcDest){
             api.rrcConnectHub(rrcDest, rrcDestName).then(() => {
