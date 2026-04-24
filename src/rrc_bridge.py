@@ -345,6 +345,9 @@ class RrcBridge:
         from rrc_tui.constants import K_BODY, K_NICK, K_ROOM, K_SRC, K_TS
         room = env.get(K_ROOM, "")
         src_raw = env.get(K_SRC, b"")
+        # Skip messages from ourselves (renderer already shows them locally)
+        if self.client and isinstance(src_raw, (bytes, bytearray)) and src_raw == self.client.identity.hash:
+            return
         src_hex = src_raw.hex() if isinstance(src_raw, (bytes, bytearray)) else str(src_raw)
         nick = env.get(K_NICK, "")
         body = env.get(K_BODY, "")
