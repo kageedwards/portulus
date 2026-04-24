@@ -972,6 +972,8 @@ api.on("rrc:init", (data) => {
 
 api.on("rrc:connected", (data) => {
     const hubHash = data.hub_hash || "";
+    const hubName = data.hub_name || "";
+
     // Find the tag for this hub in RRC bookmarks
     const hubs = state.rrcHubs.hubs || {};
     let foundTag = null;
@@ -980,10 +982,27 @@ api.on("rrc:connected", (data) => {
     }
     state.rrcActiveHubTag = foundTag;
     state.rrcConnections[hubHash] = {
-        hubName: data.hub_name || hubHash,
+        hubName: hubName || hubHash,
         limits: data.limits || {},
         rooms: new Set(),
     };
+
+    // If the bookmark tag looks like a hash prefix and we got a real name
+    // from WELCOME, offer to update it
+    if(foundTag && hubName && /^[0-9a-f]{6,}$/i.test(foundTag)){
+        // Rename the bookmark to the hub's display name
+        const hubEntry = hubs[foundTag];
+        delete hubs[foundTag];
+        hubs[hubName] = hubEntry;
+        state.rrcActiveHubTag = hubName;
+        api.rrcSaveHub(hubName, hubHash, hubEntry.dest_name || null).then(result => {
+            // Delete the old hash-named entry
+            api.rrcDeleteHub(foundTag).then(result2 => {
+                state.rrcHubs = result2.hubs || result2;
+                renderBookmarks();
+            });
+        });
+    }
 });
 
 api.on("rrc:disconnected", (data) => {
