@@ -1072,3 +1072,66 @@ body {
 .proto-btn:hover:not(.active) {
     border-color: var(--text-dim, #888);
 }
+
+/* RRC hub discovery on splash */
+#splash-discover {
+    margin: 12px 0 8px;
+}
+#btn-discover-rrc {
+    background: transparent;
+    border: 1px solid var(--border, #444);
+    color: var(--text-dim, #888);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+#btn-discover-rrc:hover:not(:disabled) {
+    border-color: var(--accent, #4a9eff);
+    color: var(--text, #ccc);
+}
+#btn-discover-rrc:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+#discover-results {
+    margin-top: 8px;
+}
+.discover-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    color: var(--text-dim, #888);
+}
+.discover-icon {
+    color: var(--accent, #4a9eff);
+}
+.discover-hash {
+    font-family: monospace;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.discover-add {
+    background: transparent;
+    border: 1px solid var(--border, #444);
+    color: var(--text-dim, #888);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+.discover-add:hover {
+    border-color: var(--accent, #4a9eff);
+    color: var(--accent, #4a9eff);
+}
+.discover-scanning {
+    font-size: 12px;
+    color: var(--text-dim, #888);
+    font-style: italic;
+}
