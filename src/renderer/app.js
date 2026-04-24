@@ -297,11 +297,9 @@ function renderBookmarks() {
                 const suffix = ` ${hubDest}`;
                 $splashInput.value = prefix + suffix;
                 $splashInput.focus();
-                // Scroll to start first, then move cursor to entry point
-                $splashInput.setSelectionRange(0, 0);
-                requestAnimationFrame(() => {
-                    $splashInput.setSelectionRange(prefix.length, prefix.length);
-                });
+                $splashInput.setSelectionRange(prefix.length, prefix.length);
+                // Force scroll so the cursor (near the start) is visible
+                $splashInput.scrollLeft = 0;
             });
             $splashBookmarks.appendChild(empty);
             continue;
