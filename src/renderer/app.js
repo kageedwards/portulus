@@ -84,9 +84,22 @@ function renderTabs() {
         const isBookmarked = isChannelBookmarked(ch.name, ch.hub, ch.key);
         const star = isBookmarked ? "★" : "☆";
         const protoIcon = ch.protocol === "rrc" ? "◈" : "⬡";
-        const label = state.revealHubs
-            ? (ch.hub ? `${ch.hub}:${ch.name}` : ch.name)
-            : cid;
+        let label;
+        if(ch.protocol === "rrc"){
+            // For RRC: always show hub context
+            let hubLabel = ch.hub;
+            if(!hubLabel){
+                // Try to find a name from active connections
+                for(const conn of Object.values(state.rrcConnections)){
+                    if(conn.hubName){ hubLabel = conn.hubName; break; }
+                }
+            }
+            label = hubLabel ? `${hubLabel}:${ch.name}` : ch.name;
+        } else if(state.revealHubs){
+            label = ch.hub ? `${ch.hub}:${ch.name}` : ch.name;
+        } else {
+            label = ch.name;
+        }
         tab.innerHTML = `<span class="tab-star${isBookmarked ? " bookmarked" : ""}">${star}</span><span>${protoIcon} ${escapeHtml(label)}</span><span class="close-tab">×</span>`;
 
         tab.addEventListener("click", (e) => {
