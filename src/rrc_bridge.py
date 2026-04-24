@@ -136,6 +136,7 @@ class RrcBridge:
     def handle_connect_hub(self, msg: dict) -> dict:
         """Connect to an RRC hub by destination hash."""
         hub_hash_hex = msg.get("hub_hash", "")
+        dest_name = msg.get("dest_name") or None
         try:
             hub_hash_bytes = bytes.fromhex(hub_hash_hex)
         except ValueError:
@@ -143,6 +144,10 @@ class RrcBridge:
 
         if self.client is None:
             return {"ok": False, "error": "Bridge not initialized"}
+
+        # If a custom dest_name is provided, reconfigure the client
+        if dest_name:
+            self.client.config = ClientConfig(dest_name=dest_name)
 
         self._session_state = "connecting"
         try:
@@ -268,12 +273,18 @@ class RrcBridge:
 
         tag = msg["tag"]
         destination = msg.get("destination")
+        dest_name = msg.get("dest_name") or None
         hubs = self._hubs_data.setdefault("hubs", {})
         if tag in hubs:
             hubs[tag]["destination"] = destination
             hubs[tag].setdefault("protocol", "rrc")
+            if dest_name:
+                hubs[tag]["dest_name"] = dest_name
         else:
-            hubs[tag] = {"destination": destination, "protocol": "rrc", "channels": []}
+            entry = {"destination": destination, "protocol": "rrc", "channels": []}
+            if dest_name:
+                entry["dest_name"] = dest_name
+            hubs[tag] = entry
         save_hubs(self._store_path, self._hubs_data)
         return {"ok": True, "hubs": self._hubs_data}
 

@@ -342,8 +342,8 @@ function setupIPC() {
     // RRC IPC handlers
     // ------------------------------------------------------------------
 
-    ipcMain.handle("rrc-connect-hub", (_, hubHash) =>
-        rrcBridgeRequest("connect_hub", { hub_hash: hubHash }));
+    ipcMain.handle("rrc-connect-hub", (_, hubHash, destName) =>
+        rrcBridgeRequest("connect_hub", { hub_hash: hubHash, dest_name: destName || null }));
 
     ipcMain.handle("rrc-disconnect-hub", (_, hubHash) =>
         rrcBridgeRequest("disconnect_hub", { hub_hash: hubHash }));
@@ -363,8 +363,8 @@ function setupIPC() {
     ipcMain.handle("rrc-discover-hubs", () =>
         rrcBridgeRequest("discover_hubs", {}));
 
-    ipcMain.handle("rrc-save-hub", (_, tag, destination) =>
-        rrcBridgeRequest("save_hub", { tag, destination }));
+    ipcMain.handle("rrc-save-hub", (_, tag, destination, destName) =>
+        rrcBridgeRequest("save_hub", { tag, destination, dest_name: destName || null }));
 
     ipcMain.handle("rrc-delete-hub", (_, tag) =>
         rrcBridgeRequest("delete_hub", { tag }));

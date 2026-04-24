@@ -23,14 +23,14 @@ contextBridge.exposeInMainWorld("portulus", {
     quit: () => ipcRenderer.invoke("quit"),
 
     // RRC commands
-    rrcConnectHub: (hubHash) => ipcRenderer.invoke("rrc-connect-hub", hubHash),
+    rrcConnectHub: (hubHash, destName) => ipcRenderer.invoke("rrc-connect-hub", hubHash, destName),
     rrcDisconnectHub: (hubHash) => ipcRenderer.invoke("rrc-disconnect-hub", hubHash),
     rrcJoin: (room) => ipcRenderer.invoke("rrc-join", room),
     rrcLeave: (room) => ipcRenderer.invoke("rrc-leave", room),
     rrcSend: (room, body) => ipcRenderer.invoke("rrc-send", room, body),
     rrcChangeNick: (nick) => ipcRenderer.invoke("rrc-change-nick", nick),
     rrcDiscoverHubs: () => ipcRenderer.invoke("rrc-discover-hubs"),
-    rrcSaveHub: (tag, dest) => ipcRenderer.invoke("rrc-save-hub", tag, dest),
+    rrcSaveHub: (tag, dest, destName) => ipcRenderer.invoke("rrc-save-hub", tag, dest, destName),
     rrcDeleteHub: (tag) => ipcRenderer.invoke("rrc-delete-hub", tag),
 
     // events from main

@@ -227,10 +227,10 @@ function renderBookmarks() {
             item.innerHTML = `<span class="bookmark-icon">${protoIcon}</span><span>${escapeHtml(ch.name)}</span>`;
             item.addEventListener("click", () => {
                 if(protocol === "rrc"){
-                    // RRC bookmark: connect to hub first, then join room
                     const dest = hub.destination;
+                    const destName = hub.dest_name || null;
                     if(dest){
-                        api.rrcConnectHub(dest).then(() => {
+                        api.rrcConnectHub(dest, destName).then(() => {
                             api.rrcJoin(ch.name);
                         }).catch(console.error);
                     }
@@ -266,6 +266,8 @@ function openHubModal(tag) {
     const $dest = document.getElementById("hub-modal-dest");
     const $title = document.getElementById("hub-modal-title");
     const $del = document.getElementById("hub-modal-delete");
+    const $destname = document.getElementById("hub-modal-destname");
+    const $destnameRow = document.getElementById("hub-modal-destname-row");
     const protoBtns = document.querySelectorAll("#hub-modal-protocol .proto-btn");
 
     if(tag){
@@ -273,20 +275,24 @@ function openHubModal(tag) {
         $title.textContent = "Edit Hub";
         $tag.value = tag;
         $dest.value = hub.destination || "";
+        $destname.value = hub.dest_name || "";
         $del.classList.remove("hidden");
         $modal.dataset.protocol = hub.protocol || "lxcf";
     } else {
         $title.textContent = "Add Hub";
         $tag.value = "";
         $dest.value = "";
+        $destname.value = "";
         $del.classList.add("hidden");
         $modal.dataset.protocol = "lxcf";
     }
 
-    // Sync protocol toggle buttons
+    // Sync protocol toggle buttons and dest_name visibility
+    const proto = $modal.dataset.protocol;
     protoBtns.forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.proto === $modal.dataset.protocol);
+        btn.classList.toggle("active", btn.dataset.proto === proto);
     });
+    $destnameRow.classList.toggle("hidden", proto !== "rrc");
 
     $modal.classList.remove("hidden");
     $tag.focus();
@@ -305,17 +311,18 @@ document.getElementById("hub-modal-protocol").addEventListener("click", (e) => {
     document.querySelectorAll("#hub-modal-protocol .proto-btn").forEach(b => {
         b.classList.toggle("active", b.dataset.proto === btn.dataset.proto);
     });
+    document.getElementById("hub-modal-destname-row").classList.toggle("hidden", btn.dataset.proto !== "rrc");
 });
 
 document.getElementById("hub-modal-save").addEventListener("click", async () => {
     const tag = document.getElementById("hub-modal-tag").value.trim();
     const dest = document.getElementById("hub-modal-dest").value.trim() || null;
     const protocol = document.getElementById("hub-modal").dataset.protocol || "lxcf";
+    const destName = document.getElementById("hub-modal-destname").value.trim() || null;
     if(!tag) return;
 
     if(protocol === "rrc"){
-        // Save via RRC bridge (sets protocol: "rrc" automatically)
-        const result = await api.rrcSaveHub(tag, dest);
+        const result = await api.rrcSaveHub(tag, dest, destName);
         state.hubs = result.hubs || result;
     } else {
         const result = await api.saveHub(tag, dest);
