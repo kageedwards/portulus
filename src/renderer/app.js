@@ -337,9 +337,13 @@ function renderBookmarks() {
                 const dest = hub.destination;
                 const destName = hub.dest_name || null;
                 if(dest){
-                    api.rrcConnectHub(dest, destName).then(() => {
-                        api.rrcJoin(ch.name);
-                    }).catch(console.error);
+                    if(state.rrcConnections[dest]){
+                        api.rrcJoin(ch.name).catch(console.error);
+                    } else {
+                        api.rrcConnectHub(dest, destName).then(() => {
+                            api.rrcJoin(ch.name);
+                        }).catch(console.error);
+                    }
                 }
             });
             $splashBookmarks.appendChild(item);
@@ -683,9 +687,15 @@ function handleInput(line) {
         const isRrc = !!rrcDest;
 
         if(isRrc && rrcDest){
-            api.rrcConnectHub(rrcDest, rrcDestName).then(() => {
-                api.rrcJoin(name);
-            }).catch(console.error);
+            // If already connected to this hub, just join the room
+            const alreadyConnected = state.rrcConnections[rrcDest] || state.rrcConnections[rrcDest?.toLowerCase()];
+            if(alreadyConnected){
+                api.rrcJoin(name).catch(console.error);
+            } else {
+                api.rrcConnectHub(rrcDest, rrcDestName).then(() => {
+                    api.rrcJoin(name);
+                }).catch(console.error);
+            }
         } else if(name){
             joinChannel(name, effectiveHub, key).catch(console.error);
         }
